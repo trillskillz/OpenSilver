@@ -29,5 +29,7 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[9]?.status).toBe('scaffolded');
     expect(patterns[10]?.id).toBe('core.atomic-swap-htlc');
     expect(patterns[10]?.status).toBe('scaffolded');
+    expect(patterns[11]?.id).toBe('core.freelance-payroll');
+    expect(patterns[11]?.status).toBe('scaffolded');
   });
 });

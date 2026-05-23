@@ -122,6 +122,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/atomic-swap-htlc.sil',
     docPath: 'docs/patterns/core/atomic-swap-htlc.md',
   },
+  {
+    id: 'core.freelance-payroll',
+    title: 'Freelance / Payroll',
+    phase: 'core',
+    stateful: false,
+    status: 'scaffolded',
+    summary: 'Client/worker/arbiter payment scaffold with mutual release, arbiter dispute paths, and timeout reclaim.',
+    contractPath: 'contracts/core/freelance-payroll.sil',
+    docPath: 'docs/patterns/core/freelance-payroll.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {

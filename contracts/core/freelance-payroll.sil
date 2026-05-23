@@ -1,0 +1,47 @@
+pragma silverscript ^0.1.0;
+
+contract FreelancePayroll(pubkey init_client, pubkey init_worker, byte[32] init_arbiter, int init_timeout) {
+    pubkey client = init_client;
+    pubkey worker = init_worker;
+    byte[32] arbiter = init_arbiter;
+    int timeout = init_timeout;
+
+    function requireArbiter(pubkey arbiter_pk, sig arbiter_sig, State prev_state) {
+        require(blake2b(arbiter_pk) == prev_state.arbiter);
+        require(checkSig(arbiter_sig, arbiter_pk));
+    }
+
+    function requireClient(pubkey client_pk, sig client_sig, State prev_state) {
+        require(client_pk == prev_state.client);
+        require(checkSig(client_sig, client_pk));
+    }
+
+    function requireWorker(pubkey worker_pk, sig worker_sig, State prev_state) {
+        require(worker_pk == prev_state.worker);
+        require(checkSig(worker_sig, worker_pk));
+    }
+
+    entrypoint function standard_release(pubkey client_pk, sig client_sig, pubkey worker_pk, sig worker_sig) {
+        State prev_state = { client: client, worker: worker, arbiter: arbiter, timeout: timeout };
+        requireClient(client_pk, client_sig, prev_state);
+        requireWorker(worker_pk, worker_sig, prev_state);
+    }
+
+    entrypoint function arbiter_refund(pubkey arbiter_pk, sig arbiter_sig, pubkey client_pk, sig client_sig) {
+        State prev_state = { client: client, worker: worker, arbiter: arbiter, timeout: timeout };
+        requireArbiter(arbiter_pk, arbiter_sig, prev_state);
+        requireClient(client_pk, client_sig, prev_state);
+    }
+
+    entrypoint function arbiter_payout(pubkey arbiter_pk, sig arbiter_sig, pubkey worker_pk, sig worker_sig) {
+        State prev_state = { client: client, worker: worker, arbiter: arbiter, timeout: timeout };
+        requireArbiter(arbiter_pk, arbiter_sig, prev_state);
+        requireWorker(worker_pk, worker_sig, prev_state);
+    }
+
+    entrypoint function timeout_reclaim(pubkey client_pk, sig client_sig) {
+        State prev_state = { client: client, worker: worker, arbiter: arbiter, timeout: timeout };
+        require(tx.time >= prev_state.timeout);
+        requireClient(client_pk, client_sig, prev_state);
+    }
+}
