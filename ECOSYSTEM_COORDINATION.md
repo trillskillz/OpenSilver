@@ -10,17 +10,19 @@ Last updated: 2026-05-23
 | --- | --- | --- | --- |
 | `kaspanet/silverscript` repo (full) | GitHub | CLONED (commit `2c46231`) | `upstream/silverscript/`. Initial pass through README, `std/builtins.sil`, and 10 key examples complete. |
 | `silverscript/covenants/sdk` folder | GitHub | **NOT FOUND** | Folder does not exist on master @ `2c46231`. Closest matches: `silverscript-lang/std/builtins.sil` (4 documented builtins) and `silverscript-lang/tests/examples/` (81 `.sil` files). **First question for Sutton:** which path did he mean? |
-| TUTORIAL.md, DECL.md, KCC20 book | upstream | PARTIAL (file sizes verified, full read scheduled) | `docs/TUTORIAL.md` 1338 lines, `docs/DECL.md` 373 lines, `docs/kcc20-book/`. |
-| KIP-17 (extended script opcodes) | kaspanet/kips | PENDING | |
-| KIP-20 (Covenant IDs) | kaspanet/kips | PENDING | **Critical** — foundation for every stateful pattern. |
-| KIP-16 (ZK opcodes + verifier precompile) | kaspanet/kips | PENDING | |
-| KIP-21 (sequencing commitments) | kaspanet/kips | PENDING | |
-| Sutton's "Kaspa Covenants++ Toccata Hard-Fork Outlook" Medium post | Medium | PENDING | |
-| Kaspero Labs SilverScript Studio docs | Kaspero Labs | PENDING | |
+| TUTORIAL.md, DECL.md, KCC20 book | upstream | READ (TUTORIAL section-headers + key sections, DECL full); KCC20 book pending | `docs/TUTORIAL.md` 1338 lines, `docs/DECL.md` 373 lines (full read — declaration sugar layer documented in `LANGUAGE_DEEP_DIVE.md`). |
+| KIP-17 (extended script opcodes) | kaspanet/kips PR #32 | READ | Fetched from `someone235:kip17` @ `6fc7a1b`. Summarised in `references/kips/SUMMARY.md`. |
+| KIP-20 (Covenant IDs) | kaspanet/kips PR #35 | READ | Fetched from `michaelsutton:kip20` @ `0581f55`. **Activated in TN12.** Full opcode + non-forgeability tables in `references/kips/SUMMARY.md`. |
+| KIP-16 (ZK opcodes + verifier precompile) | kaspanet/kips PR #31 | READ | Fetched from `saefstroem:kip16` @ `c5ec7ff`. Single opcode `OpZkPrecompile`, tags 0x20 (Groth16) + 0x21 (RISC0-Succinct). |
+| KIP-21 (sequencing commitments) | kaspanet/kips PR #36 | READ | Fetched from `michaelsutton:kip21` @ `bd4cfe4`. Draft. Partitioned commitment over active lanes. |
+| Sutton's "Kaspa Covenants++ Toccata Hard-Fork Outlook" Medium post | Medium | PENDING | Needs web fetch. |
+| Kaspero Labs SilverScript Studio docs | Kaspero Labs | PENDING | Needs web fetch. |
 | KaspaCom covenant wallet code | GitHub | PENDING | |
 | `kaspacom-defi-mcp` source | GitHub | PENDING | Confirm scope boundary with our MCP. |
-| Saefstroem Groth16 verifier PR | rusty-kaspa | PENDING | Foundation for ZK patterns (Phase 5). |
+| Saefstroem Groth16 verifier PR | rusty-kaspa#775 | PARTIAL | KIP-16 spec read; PR diff itself not yet read. |
 | Hans Moog vProgs PRs | rusty-kaspa | PENDING | Forward-compat target. |
+| KasBonds `contracts/` + `vendor/x402-KAS/` | local | READ | Audit in `KASBONDS_AUDIT.md`. Two promotable patterns identified. |
+| Upstream test suite | local | PASSING | `cargo test -p silverscript-lang`: **466 tests, 21 suites, 0 failures** @ `2c46231`. Toolchain confirmed working. |
 
 ## 0.2 — Outreach log
 
@@ -69,9 +71,12 @@ Coordination, not permission. We need to discover:
 
 ## 0.4 — Recon docs in repo (Phase 1 outputs drafted in parallel — non-pattern code, permitted under hard gate)
 
-- `LANGUAGE_DEEP_DIVE.md` — SilverScript surface as observed at `2c46231`.
-- `KIP_REFERENCE.md` — what we need to extract from each KIP, reading order.
-- `PATTERN_MAPPING.md` — upstream examples × neighbouring ecosystems × OpenSilver V1 catalogue.
+- `LANGUAGE_DEEP_DIVE.md` — SilverScript surface as observed at `2c46231`, including the `#[covenant(...)]` declaration sugar from `DECL.md`.
+- `KIP_REFERENCE.md` — pointer + hard rules table; details in `references/kips/SUMMARY.md`.
+- `references/kips/SUMMARY.md` — per-KIP extraction (opcodes, architectural patterns, OpenSilver impact) for KIP-16/17/20/21.
+- `references/kips/kip-{0016,0017,0020,0021}.md` — full text of each KIP, fetched from the open PR branches.
+- `PATTERN_MAPPING.md` — upstream examples × neighbouring ecosystems × OpenSilver V1 catalogue, plus the DECL.md composition-shape table.
+- `KASBONDS_AUDIT.md` — Phase 1 Task 1.3 audit. Two promotable patterns: MinimumBond → Oracle-Settled Escrow with Slash Distribution (3.5b/3.12), X402Channel v4 → Stateful Payment Channel (3.7b).
 
 ## Exit criteria for Phase 0
 

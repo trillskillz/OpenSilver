@@ -58,10 +58,25 @@ Four state-transition primitives form the **entire stateful covenant surface** o
 
 > **Security-by-construction implication:** OpenSilver SDK glue MUST surface `expectedTemplateHash` as a trusted-source-only parameter. Helpers should accept it only from contract constants or verified protocol commitments — never from caller arguments. This is the prime "make the secure path the default path" requirement.
 
-## Confirmed gap (preliminary, pre-outreach)
+## Two upstream surfaces, not one folder
 
-There is no `covenants/sdk` folder in the current `kaspanet/silverscript` master branch (commit `2c46231`). The closest equivalents are:
-- `silverscript-lang/std/builtins.sil` — 4 builtin signatures with semantics docs.
-- `silverscript-lang/tests/examples/` — 81 example `.sil` files including covenant_escrow, hodl_vault, mecenas, kcc20, kcc20-minter, covenant_last_will, transfer_with_timeout, 2_of_3_multisig, sibling_introspection, simulating_state.
+There is no `covenants/sdk` folder in `kaspanet/silverscript` master at commit `2c46231`. What Sutton's quote likely references is two surfaces that *together* form the current best reference:
 
-This is a **non-blocking** discovery — Sutton's quote may predate a refactor, or reference an internal/branch path. It is the first concrete question to raise with him in outreach: "Is the `covenants/sdk` you flagged the current `std/builtins.sil` + `tests/examples`, or a separate WIP folder?"
+1. **`silverscript-lang/std/builtins.sil`** — four documented state-transition builtins (see `LANGUAGE_DEEP_DIVE.md`).
+2. **`docs/DECL.md`** — the `#[covenant(binding = …, from = X, to = Y, mode = …)]` declaration sugar that lowers into those builtins plus KIP-20 `OpAuth*`/`OpCov*` opcodes.
+
+OpenSilver patterns target the **declaration sugar** layer, not the lowered form. This means every pattern is written as a policy function annotated with the covenant macro, and the compiler generates the lowered entrypoint(s). Hand-rolled lowerings exist only where the macro cannot express the shape (document why in "WHEN NOT TO USE THIS").
+
+This remains the first outreach question to Sutton: "Is the `covenants/sdk` you flagged the current `std/builtins.sil` + `DECL.md` + `tests/examples`, or a separate WIP path?"
+
+## Composition-level patterns DECL.md formalises
+
+DECL.md's macro semantics give OpenSilver three first-class transition shapes:
+
+| Shape | Sugar | Lowered | OpenSilver patterns that use this |
+| --- | --- | --- | --- |
+| `1:1 singleton` | `#[covenant.singleton(mode = transition)]` | `OpAuthOutput*` + single `validateOutputState` | 3.3 TimeLock, 3.7 Streaming, 3.8 Vesting, 4.6 KRC-20 Snapshot, 5.1 Verified Computation |
+| `1:N split` (fanout) | `#[covenant.fanout(to = Y)]` | `OpAuthOutput*` loop + N `validateOutputState` | 3.5 Escrow, 3.6 Milestone Escrow, 4.1 KRC-20 transfer (split) |
+| `N:M leader+delegate` | `#[covenant(binding = cov, from = X, to = Y)]` | `OpCovInput*`/`OpCovOutput*` + leader/delegate entrypoints | 3.4 Vault rebalancing, 4.1 KRC-20 transfer (aggregation), 5.4 Proof-Stitched |
+
+`termination = allowed` on a singleton transition unlocks the explicit zero-or-one continuation pattern, which 3.7 Streaming (cancel) and 3.9 Dead Man's Switch (final release) both need.
