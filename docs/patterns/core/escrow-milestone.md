@@ -20,10 +20,10 @@ Paths:
 ## Security considerations
 
 - Milestone progression is monotonic: `completed_milestones` can only increase by one.
-- `final_release` requires full completion.
-- Refund requires arbiter plus buyer participation.
-- Timeout reclaim remains a buyer-protection path.
-- This scaffold does not yet encode per-milestone payout accounting, partial withdrawals, or exact output-shape/value checks.
+- `final_release` requires full completion and now constrains a single seller P2PK payout on output 0 with `input_value - minerFee` conservation.
+- Refund requires arbiter plus buyer participation and now constrains a single buyer P2PK payout on output 0 with `input_value - minerFee` conservation.
+- Timeout reclaim remains a buyer-protection path and now constrains the same buyer payout shape.
+- This scaffold still does not encode per-milestone payout accounting, partial withdrawals, or continuation-output value checks for the state transition path.
 
 ## KIP-20 Covenant ID handling
 

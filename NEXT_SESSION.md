@@ -21,6 +21,7 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 - Phase 3.10 has started with a stateful `Social Recovery` scaffold exposing guardian-quorum initiation, delayed finalization, and owner cancellation; next work is guardian rotation and activation-delay derivation.
 - Phase 3.11 has started with an `Atomic Swap (HTLC)` scaffold exposing recipient claim by secret preimage and timeout refund; next work is secret-format tightening and output constraints.
 - Phase 3.12 has started with a `Freelance / Payroll` scaffold exposing mutual release, arbiter refund/payout, and timeout reclaim; terminal output/value constraints are now in place, and next work is broader amount/accounting checks.
+- Remaining hardening work is concentrated in continuation-output accounting for stateful transitions (`Milestone Escrow.approve_milestone`, `Vault` admin paths, and any future split-output variants).
 
 ### 1. KCC20 book — Pattern 4.1 dependency ✅ DONE 2026-05-23
 - Read introduction, overview, kcc20-contract, what-the-tests-demonstrate.
