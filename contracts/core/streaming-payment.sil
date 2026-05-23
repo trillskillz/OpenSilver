@@ -29,10 +29,16 @@ contract StreamingPayment(
 
     function requireValidStream(State prev_state) {
         require(prev_state.rate_per_claim > 0);
-        require(prev_state.total_allowance >= prev_state.rate_per_claim);
+        require(prev_state.total_allowance > 0);
         require(prev_state.remaining_allowance >= 0);
         require(prev_state.total_allowance >= prev_state.remaining_allowance);
         require(prev_state.period >= 0);
+    }
+
+    function requireExactPayout(pubkey destination, int amount) {
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
     }
 
     #[covenant.singleton(mode = transition, termination = allowed)]
@@ -42,8 +48,9 @@ contract StreamingPayment(
         require(tx.time >= prev_state.next_release_time);
         require(prev_state.remaining_allowance > 0);
 
-        int next_remaining = prev_state.remaining_allowance - prev_state.rate_per_claim;
-        if (next_remaining > 0) {
+        if (prev_state.remaining_allowance > prev_state.rate_per_claim) {
+            int next_remaining = prev_state.remaining_allowance - prev_state.rate_per_claim;
+            requireExactPayout(prev_state.recipient, prev_state.rate_per_claim);
             require(next_states.length == 1);
             return([{
                 sender: prev_state.sender,
@@ -56,6 +63,7 @@ contract StreamingPayment(
             }]);
         }
 
+        requireExactPayout(prev_state.recipient, prev_state.remaining_allowance);
         require(next_states.length == 0);
         return([]);
     }
@@ -72,5 +80,8 @@ contract StreamingPayment(
         };
         requireValidStream(prev_state);
         requireSender(sender_pk, sender_sig, prev_state);
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        requireExactPayout(prev_state.sender, amount);
     }
 }

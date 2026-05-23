@@ -20,10 +20,11 @@ State tracks:
 ## Security considerations
 
 - `withdraw` requires recipient signature and `tx.time >= next_release_time`.
-- Stream state is monotonic: `remaining_allowance` decreases by `rate_per_claim` each successful withdrawal.
+- `withdraw` now constrains output 0 to pay the recipient the actual claim amount, and terminal cancellation pays the sender `input_value - minerFee` on output 0.
+- Stream state is monotonic: `remaining_allowance` decreases by the claim amount each successful withdrawal.
 - The stream terminates automatically when allowance is exhausted.
 - `cancel` currently acts as a terminal sender-authorized exit path.
-- This scaffold does not yet constrain exact output shapes, payout amounts, or sender refund accounting.
+- This scaffold now constrains the primary payout output, but it does not yet verify the continuation output's exact retained value/accounting.
 - This scaffold also assumes a fixed amount per claim instead of continuously accrued fractional time accounting.
 
 ## KIP-20 Covenant ID handling

@@ -17,10 +17,11 @@ This is a discrete-step vesting model rather than continuous pro-rata accrual.
 ## Security considerations
 
 - `claim` requires beneficiary signature and `tx.time >= cliff_time`.
+- `claim` now constrains output 0 to pay the beneficiary the actual vested claim amount, and `revoke` pays the admin `input_value - minerFee` on output 0.
 - vesting state is monotonic: `claimed_amount` increases and never exceeds `total_allocation`.
 - vesting terminates automatically once the total allocation is exhausted.
 - `revoke` is only enabled when `revocable == true`.
-- This scaffold does not yet constrain exact output shapes, payout amounts, or refund accounting for revoked remainder.
+- This scaffold now constrains the primary payout output, but it does not yet verify continuation-output retained value or nuanced revocation remainder accounting.
 - The current model advances `cliff_time` by `period` after each successful claim, effectively treating it as the next claim timestamp.
 
 ## KIP-20 Covenant ID handling

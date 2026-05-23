@@ -37,6 +37,12 @@ contract Vesting(
         require(prev_state.period >= 0);
     }
 
+    function requireExactPayout(pubkey destination, int amount) {
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
+    }
+
     #[covenant.singleton(mode = transition, termination = allowed)]
     function claim(State prev_state, pubkey beneficiary_pk, sig beneficiary_sig, State[] next_states) : (State[]) {
         requireValidVesting(prev_state);
@@ -44,8 +50,10 @@ contract Vesting(
         require(tx.time >= prev_state.cliff_time);
         require(prev_state.claimed_amount < prev_state.total_allocation);
 
-        int next_claimed = prev_state.claimed_amount + prev_state.release_per_period;
-        if (prev_state.total_allocation > next_claimed) {
+        int remaining = prev_state.total_allocation - prev_state.claimed_amount;
+        if (remaining > prev_state.release_per_period) {
+            int next_claimed = prev_state.claimed_amount + prev_state.release_per_period;
+            requireExactPayout(prev_state.beneficiary, prev_state.release_per_period);
             require(next_states.length == 1);
             return([{
                 beneficiary: prev_state.beneficiary,
@@ -59,6 +67,7 @@ contract Vesting(
             }]);
         }
 
+        requireExactPayout(prev_state.beneficiary, remaining);
         require(next_states.length == 0);
         return([]);
     }
@@ -77,5 +86,8 @@ contract Vesting(
         requireValidVesting(prev_state);
         require(prev_state.revocable);
         requireAdmin(admin_pk, admin_sig, prev_state);
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        requireExactPayout(prev_state.admin, amount);
     }
 }
