@@ -62,9 +62,13 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 
 ### 8. Runtime harness — landed and extended ✅ DONE 2026-05-23
 - Picked up the previous session's uncommitted `runtime-tests/` crate, fixed the three rough edges (generic `MutableTransaction<T>`, `Vec::leak` on args, 32-byte cov-id literal), got the 4 starter tests passing.
-- Extended coverage from 4 → 18 tests across 9 patterns. See `STATUS.md` matrix.
+- Extended coverage from 4 → **30 tests across 11 patterns, all green** (plus 7 documented-skipped). See `STATUS.md` matrix.
 - Added `runtime-tests/target/` and `Cargo.lock` to `.gitignore` so build artefacts don't follow into commits.
-- Patterns still without runtime coverage: Ownable singleton transitions, Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Freelance/Payroll, plus the Vault admin transitions (`extend_lock`, `reconfigure_signers`, owner handoff) and TimeLock's `extend_lock` singleton. Logical next batch.
+- Three compiler/contract gaps surfaced by the harness (these were invisible to the AST-only vitest suite):
+  1. `streaming-payment.sil` and `vesting.sil` do not survive full compile — early `return([...])` inside `if` branch is `Unsupported`. Action: refactor both to single-return shapes.
+  2. NUM2BIN size cap on any singleton transition that writes a new byte[32] state value (runtime arg OR `byte[32](0)` literal). Affects Ownable, SocialRecovery, Vault owner-handoff. Action: refactor identity slots to `pubkey + bool flag` OR patch compiler to use OP_PUSHDATA on byte[32] state writes.
+  3. Missing engine-side `this.age` / DAA-score plumbing in the harness. Blocks DMS.claim. Action: find the `EngineCtx`/`EngineFlags` knob for current DAA score and thread it through `execute_*_input`.
+- Test bodies for the blocked cases are kept in-file under `#[ignore = "..."]` with detailed notes, so post-fix sessions can revive them without rewriting.
 
 ### 7. awesome-kaspa + Kaspa ecosystem index ✅ DONE 2026-05-23
 - Cloned `Kasbah-commons/awesome-kaspa` (correction: repo owner is **not** `aspectron`).

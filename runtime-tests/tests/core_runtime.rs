@@ -1468,21 +1468,40 @@ fn ownable_cov_id(marker: u8) -> Hash {
 }
 
 // ── ownable_*, social_recovery_* skipped: NUM2BIN size cap (issue #2) ────
-// All three singleton-transition tests in this section blow up at engine
-// execution time with:
+// All four singleton-transition tests skipped in this section blow up at
+// engine execution time with:
 //   `push encoding is not minimal: NUM2BIN target size 32 exceeds 8 bytes`
 //
-// The pattern is: the sigscript hands a Vec<u8>-of-32-bytes runtime arg
-// (next_owner hash, new_owner hash) into a #[covenant.singleton(...)]
-// entrypoint whose policy returns a state containing that arg as a
-// byte[32] field. The lowering apparently routes the runtime arg through
-// NUM2BIN to coerce it into the new redeem script's state slot, and
-// NUM2BIN only supports up to 8-byte targets.
+// Updated finding after Vault.extend_lock + Vault.reconfigure_signers
+// passed: the break is NOT about runtime byte[32] args specifically. It's
+// about *any singleton transition that writes a byte[32] state field to
+// a new value*, whether that value comes from a runtime arg
+// (Ownable.propose_transfer's next_owner; SocialRecovery.initiate's
+// new_owner) or from a literal `byte[32](0)` zero in the return body
+// (Ownable.accept_transfer and SocialRecovery.cancel_recovery).
 //
-// Constructor-time byte[32] state works fine (KCC20, Vault, milestone
-// escrow all run). The break is specifically *runtime* byte[32] args to
-// singleton transitions. Filed as Phase-3 followup; do not unskip
-// without first writing a focused upstream-issue reproducer.
+// What works (proven by the passing tests):
+//   - Constructor-time byte[32] state (KCC20, Vault, milestone escrow).
+//   - Singleton transitions that change int/pubkey fields while leaving
+//     byte[32] state slots set to `prev_state.<same_field>` unchanged
+//     (Vault.extend_lock, Vault.reconfigure_signers).
+//
+// What breaks:
+//   - Singleton transitions that need to write a new byte[32] value into
+//     a state slot — runtime arg OR literal.
+//
+// Fix paths (any of):
+//   1. Refactor patterns to encode identity as `pubkey` + a `bool flag`
+//      instead of `byte[32] hash` — pubkey runtime args work, see the
+//      Vault.reconfigure_signers test.
+//   2. Patch the compiler lowering to use OP_PUSHDATA for byte[32] state
+//      slot writes instead of routing through NUM2BIN.
+//   3. Make the dynamic-byte[32]-slot pattern a constructor-time decision
+//      and use a separate covenant per shape (heavyweight; rules out
+//      single-template owner rotation).
+//
+// Track upstream once we file the issue; do not unskip without confirming
+// either a contract refactor or a compiler patch landed.
 
 #[ignore = "NUM2BIN size cap on runtime byte[32] args; see comment above"]
 #[test]
@@ -2022,6 +2041,377 @@ fn vault_extend_lock_accepts_quorum_with_later_unlock() {
 
     let result = execute_covenant_input(mutable.tx, utxo);
     assert!(result.is_ok(), "vault extend_lock runtime failed: {}", result.unwrap_err());
+
+    let _ = pk3;
+}
+
+// ─── DeadMansSwitch.ping (int-arg singleton) ────────────────────────────────
+//
+// Owner reports they're alive by writing a new last_ping_age into the
+// covenant state. Sole runtime arg is the int next_last_ping_age plus owner
+// credentials — no byte[32] runtime arg, so the NUM2BIN cap is avoided.
+
+#[test]
+fn dms_ping_accepts_owner_with_new_ping_age() {
+    let owner = random_keypair();
+    let fallback = random_keypair();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let fallback_pk = fallback.x_only_public_key().0.serialize();
+    let owner_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&owner_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let fallback_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&fallback_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout_age = 100_i64;
+    let prev_ping = 10_i64;
+    let next_ping = 42_i64;
+
+    let active = compile_contract_file(
+        "contracts/core/dead-man-switch.sil",
+        vec![
+            owner_hash.clone().into(),
+            fallback_hash.clone().into(),
+            timeout_age.into(),
+            prev_ping.into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/dead-man-switch.sil",
+        vec![
+            owner_hash.into(),
+            fallback_hash.into(),
+            timeout_age.into(),
+            next_ping.into(),
+        ],
+    );
+
+    let input_value = 3_000u64;
+    let cov_id = ownable_cov_id(0xF0);
+    let output0 = TransactionOutput {
+        value: input_value - 1_000,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xF0; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let owner_sig = schnorr_signature(&mutable, 0, &owner);
+    let sigscript = covenant_sigscript(
+        &active,
+        "ping",
+        vec![next_ping.into(), owner_pk.to_vec().into(), owner_sig.into()],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "dms ping runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn dms_ping_rejects_fallback_signature() {
+    // Only the owner can ping. Fallback's signature must fail the
+    // require(blake2b(owner_pk) == owner) check.
+    let owner = random_keypair();
+    let fallback = random_keypair();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let fallback_pk = fallback.x_only_public_key().0.serialize();
+    let owner_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&owner_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let fallback_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&fallback_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout_age = 100_i64;
+    let prev_ping = 10_i64;
+    let next_ping = 42_i64;
+
+    let active = compile_contract_file(
+        "contracts/core/dead-man-switch.sil",
+        vec![
+            owner_hash.clone().into(),
+            fallback_hash.clone().into(),
+            timeout_age.into(),
+            prev_ping.into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/dead-man-switch.sil",
+        vec![
+            owner_hash.into(),
+            fallback_hash.into(),
+            timeout_age.into(),
+            next_ping.into(),
+        ],
+    );
+
+    let input_value = 3_000u64;
+    let cov_id = ownable_cov_id(0xF1);
+    let output0 = TransactionOutput {
+        value: input_value - 1_000,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xF1; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let fallback_sig = schnorr_signature(&mutable, 0, &fallback);
+    let sigscript = covenant_sigscript(
+        &active,
+        "ping",
+        vec![next_ping.into(), fallback_pk.to_vec().into(), fallback_sig.into()],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_covenant_input(mutable.tx, utxo).expect_err("fallback ping must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+// ─── SocialRecovery.cancel_recovery (owner-only singleton) ─────────────────
+//
+// Owner cancels a pending recovery proposal, flipping pending_owner back
+// to zero. Pure sig + state-comparison singleton; no runtime byte[32] arg.
+
+#[ignore = "NUM2BIN size cap on byte[32](0) literal in next state; see Ownable note"]
+#[test]
+fn social_recovery_cancel_accepts_owner_signature() {
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let owner = random_keypair();
+    let pending = random_keypair();
+    let g1_pk = g1.x_only_public_key().0.serialize();
+    let g2_pk = g2.x_only_public_key().0.serialize();
+    let g3_pk = g3.x_only_public_key().0.serialize();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let pending_pk = pending.x_only_public_key().0.serialize();
+    let owner_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&owner_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let pending_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&pending_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+
+    // Active: pending_owner is set; Next: pending_owner is zero.
+    let active = compile_contract_file(
+        "contracts/core/social-recovery.sil",
+        vec![
+            owner_hash.clone().into(),
+            pending_hash.into(),
+            2_i64.into(),
+            g1_pk.to_vec().into(),
+            g2_pk.to_vec().into(),
+            g3_pk.to_vec().into(),
+            150_i64.into(),
+            50_i64.into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/social-recovery.sil",
+        vec![
+            owner_hash.into(),
+            vec![0u8; 32].into(),
+            2_i64.into(),
+            g1_pk.to_vec().into(),
+            g2_pk.to_vec().into(),
+            g3_pk.to_vec().into(),
+            150_i64.into(),
+            50_i64.into(),
+        ],
+    );
+
+    let input_value = 3_000u64;
+    let cov_id = ownable_cov_id(0xC1);
+    let output0 = TransactionOutput {
+        value: input_value - 1_000,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xC1; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let owner_sig = schnorr_signature(&mutable, 0, &owner);
+    let sigscript = covenant_sigscript(
+        &active,
+        "cancel_recovery",
+        vec![owner_pk.to_vec().into(), owner_sig.into()],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "social cancel_recovery runtime failed: {}", result.unwrap_err());
+}
+
+// ─── Vault.reconfigure_signers (int + pubkey args singleton) ────────────────
+//
+// Vault.reconfigure_signers takes (next_threshold: int, next_pk1/pk2/pk3:
+// pubkey, owner credentials, 3x current-signer credentials). Mixes int and
+// 32-byte pubkey runtime args. Confirms pubkey runtime args work where
+// byte[32] (hash) args break — distinct because pubkey type has its own
+// push encoding distinct from byte[32].
+
+#[test]
+fn vault_reconfigure_signers_accepts_owner_and_quorum() {
+    let owner = random_keypair();
+    let kp1 = random_keypair();
+    let kp2 = random_keypair();
+    let kp3 = random_keypair();
+    let new_kp1 = random_keypair();
+    let new_kp2 = random_keypair();
+    let new_kp3 = random_keypair();
+    let beneficiary = random_keypair();
+
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let pk1 = kp1.x_only_public_key().0.serialize();
+    let pk2 = kp2.x_only_public_key().0.serialize();
+    let pk3 = kp3.x_only_public_key().0.serialize();
+    let new_pk1 = new_kp1.x_only_public_key().0.serialize();
+    let new_pk2 = new_kp2.x_only_public_key().0.serialize();
+    let new_pk3 = new_kp3.x_only_public_key().0.serialize();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
+    let owner_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&owner_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+
+    let unlock_time = 100_i64;
+    let active_threshold = 2_i64;
+    let next_threshold = 3_i64;
+
+    let active = compile_contract_file(
+        "contracts/core/vault.sil",
+        vec![
+            owner_hash.clone().into(),
+            vec![0u8; 32].into(),
+            active_threshold.into(),
+            pk1.to_vec().into(),
+            pk2.to_vec().into(),
+            pk3.to_vec().into(),
+            unlock_time.into(),
+            beneficiary_pk.to_vec().into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/vault.sil",
+        vec![
+            owner_hash.into(),
+            vec![0u8; 32].into(),
+            next_threshold.into(),
+            new_pk1.to_vec().into(),
+            new_pk2.to_vec().into(),
+            new_pk3.to_vec().into(),
+            unlock_time.into(),
+            beneficiary_pk.to_vec().into(),
+        ],
+    );
+
+    let input_value = 10_000u64;
+    let cov_id = ownable_cov_id(0xE1);
+    let continuation_value = input_value - 1_000;
+    let output0 = TransactionOutput {
+        value: continuation_value,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xE1; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let attacker = random_keypair();
+    let attacker_pk = attacker.x_only_public_key().0.serialize();
+    let owner_sig = schnorr_signature(&mutable, 0, &owner);
+    let sig1 = schnorr_signature(&mutable, 0, &kp1);
+    let sig2 = schnorr_signature(&mutable, 0, &kp2);
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+
+    let sigscript = covenant_sigscript(
+        &active,
+        "reconfigure_signers",
+        vec![
+            next_threshold.into(),
+            new_pk1.to_vec().into(),
+            new_pk2.to_vec().into(),
+            new_pk3.to_vec().into(),
+            owner_pk.to_vec().into(),
+            owner_sig.into(),
+            pk1.to_vec().into(),
+            sig1.into(),
+            pk2.to_vec().into(),
+            sig2.into(),
+            attacker_pk.to_vec().into(),
+            attacker_sig.into(),
+        ],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "vault reconfigure_signers runtime failed: {}", result.unwrap_err());
 
     let _ = pk3;
 }
