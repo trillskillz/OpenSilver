@@ -63,6 +63,14 @@ contract Vault(
         return(approvals);
     }
 
+    function requireExactPayout(pubkey destination) {
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
+    }
+
     entrypoint function release(pubkey signer1, sig sig1, pubkey signer2, sig sig2, pubkey signer3, sig sig3, pubkey beneficiary_pk, sig beneficiary_sig) {
         State prev_state = {
             owner: owner,
@@ -80,6 +88,7 @@ contract Vault(
         require(approvalCount(prev_state, signer1, sig1, signer2, sig2, signer3, sig3) >= prev_state.threshold);
         require(beneficiary_pk == prev_state.beneficiary);
         require(checkSig(beneficiary_sig, beneficiary_pk));
+        requireExactPayout(prev_state.beneficiary);
     }
 
     #[covenant.singleton(mode = transition)]

@@ -14,7 +14,9 @@ This scaffold also includes an owner-authorized `extend_lock` state transition s
 ## Security considerations
 
 - `claim` requires both the beneficiary signature and `tx.time >= unlock_time`.
+- `claim` now constrains the terminal payout to a single beneficiary P2PK output with `input_value - minerFee` conservation on output 0.
 - `cancel` is only enabled when `soft_cancel_enabled == true`.
+- `cancel` now constrains the terminal payout to a single owner P2PK output with `input_value - minerFee` conservation on output 0.
 - Intended semantics are cancellation before unlock, but the strict pre-unlock guard is not yet encoded because this compiler snapshot is picky about some `tx.time` comparison shapes beyond the direct `>=` form.
 - `extend_lock` can only move the lock **forward**, never backward.
 - This scaffold uses explicit `pubkey` state fields instead of hashed identifiers for simplicity; that may not be the final OpenSilver convention for all composable patterns.

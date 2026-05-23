@@ -13,6 +13,7 @@ A first enterprise-treasury-style composition of the earlier OpenSilver primitiv
 ## Security considerations
 
 - `release` requires both quorum approval and the beneficiary signature after `unlock_time`.
+- `release` now constrains the terminal payout to a single beneficiary P2PK output with `input_value - minerFee` conservation on output 0.
 - `extend_lock` is quorum-gated and forward-only.
 - `reconfigure_signers` requires both owner approval and current-signer quorum.
 - owner transfer follows a two-step handoff.
