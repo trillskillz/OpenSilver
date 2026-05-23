@@ -899,3 +899,173 @@ fn bilateral_timeout_reclaim_accepts_after_timeout() {
     // the contract config alongside buyer/arbiter.
     let _ = seller_pk;
 }
+
+// ─── Vault.release — the composition pattern ────────────────────────────────
+//
+// This single test exercises every primitive the Vault chain depends on:
+//   - tx.time >= unlock_time      (TimeLock fragment)
+//   - N-of-M signer quorum        (MultiSig fragment)
+//   - beneficiary signature       (Ownable-style key-binding)
+//   - requireExactPayout          (terminal payout shape)
+// If this passes end-to-end, every fragment-level invariant the compiler
+// emits is being satisfied by the engine.
+
+#[test]
+fn vault_release_accepts_quorum_and_beneficiary_after_unlock() {
+    let owner = random_keypair();
+    let kp1 = random_keypair();
+    let kp2 = random_keypair();
+    let kp3 = random_keypair();
+    let beneficiary = random_keypair();
+
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let pk1 = kp1.x_only_public_key().0.serialize();
+    let pk2 = kp2.x_only_public_key().0.serialize();
+    let pk3 = kp3.x_only_public_key().0.serialize();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
+
+    let owner_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&owner_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let pending_owner_zero = vec![0u8; 32];
+    let threshold = 2_i64;
+    let unlock_time = 10_i64;
+
+    let compiled = compile_contract_file(
+        "contracts/core/vault.sil",
+        vec![
+            owner_hash.into(),
+            pending_owner_zero.into(),
+            threshold.into(),
+            pk1.to_vec().into(),
+            pk2.to_vec().into(),
+            pk3.to_vec().into(),
+            unlock_time.into(),
+            beneficiary_pk.to_vec().into(),
+        ],
+    );
+
+    let input_value = 10_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&beneficiary_pk, input_value, unlock_time as u64, 0x70);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    // Threshold = 2: kp1 + kp2 are valid members. Pad the third slot with a
+    // non-member + their own valid sig; the contract's approvalCount only
+    // counts member-checked signatures, so 2 members > threshold suffices
+    // and the non-member contributes nothing.
+    let attacker = random_keypair();
+    let attacker_pk = attacker.x_only_public_key().0.serialize();
+    let sig1 = schnorr_signature(&mutable, 0, &kp1);
+    let sig2 = schnorr_signature(&mutable, 0, &kp2);
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+    let beneficiary_sig = schnorr_signature(&mutable, 0, &beneficiary);
+
+    let sigscript = compiled
+        .build_sig_script(
+            "release",
+            vec![
+                pk1.to_vec().into(),
+                sig1.into(),
+                pk2.to_vec().into(),
+                sig2.into(),
+                attacker_pk.to_vec().into(),
+                attacker_sig.into(),
+                beneficiary_pk.to_vec().into(),
+                beneficiary_sig.into(),
+            ],
+        )
+        .expect("vault release sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "vault release runtime failed: {}", result.unwrap_err());
+
+    // owner_pk + pk3 only seed the contract config; silence unused-binding.
+    let _ = (owner_pk, pk3);
+}
+
+#[test]
+fn vault_release_rejects_when_beneficiary_signature_swapped() {
+    // Same happy path, but the beneficiary slot is filled with an
+    // attacker key + signature. The contract pins beneficiary_pk to the
+    // committed state field, so this must fail.
+    let owner = random_keypair();
+    let kp1 = random_keypair();
+    let kp2 = random_keypair();
+    let kp3 = random_keypair();
+    let beneficiary = random_keypair();
+    let attacker = random_keypair();
+
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let pk1 = kp1.x_only_public_key().0.serialize();
+    let pk2 = kp2.x_only_public_key().0.serialize();
+    let pk3 = kp3.x_only_public_key().0.serialize();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
+    let attacker_pk = attacker.x_only_public_key().0.serialize();
+
+    let owner_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&owner_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let pending_owner_zero = vec![0u8; 32];
+    let threshold = 2_i64;
+    let unlock_time = 10_i64;
+
+    let compiled = compile_contract_file(
+        "contracts/core/vault.sil",
+        vec![
+            owner_hash.into(),
+            pending_owner_zero.into(),
+            threshold.into(),
+            pk1.to_vec().into(),
+            pk2.to_vec().into(),
+            pk3.to_vec().into(),
+            unlock_time.into(),
+            beneficiary_pk.to_vec().into(),
+        ],
+    );
+
+    let input_value = 10_000u64;
+    // Note: the payout is still routed to the *real* beneficiary; the only
+    // change vs the accepts-test is the beneficiary credentials submitted.
+    let (tx, _payout) = build_terminal_payout_tx(&beneficiary_pk, input_value, unlock_time as u64, 0x71);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let extra = random_keypair();
+    let extra_pk = extra.x_only_public_key().0.serialize();
+    let sig1 = schnorr_signature(&mutable, 0, &kp1);
+    let sig2 = schnorr_signature(&mutable, 0, &kp2);
+    let extra_sig = schnorr_signature(&mutable, 0, &extra);
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+
+    let sigscript = compiled
+        .build_sig_script(
+            "release",
+            vec![
+                pk1.to_vec().into(),
+                sig1.into(),
+                pk2.to_vec().into(),
+                sig2.into(),
+                extra_pk.to_vec().into(),
+                extra_sig.into(),
+                attacker_pk.to_vec().into(),
+                attacker_sig.into(),
+            ],
+        )
+        .expect("vault release sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("swapped beneficiary must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+
+    let _ = (owner_pk, pk3, beneficiary);
+}

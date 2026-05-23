@@ -2,17 +2,17 @@
 
 ```
 PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
-PHASE_2_STATUS: IN_PROGRESS (initial monorepo scaffold landed)
+PHASE_2_STATUS: IN_PROGRESS (monorepo scaffold landed; 12 Phase-3 patterns scaffolded; runtime harness live)
 PATTERNS_COMPLETE: 0/22 (12 scaffolds started: Ownable, MultiSig, TimeLock, Vault, Escrow bilateral, Escrow milestone, Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Atomic Swap HTLC, Freelance / Payroll)
 TESTNET_TXS: []
 DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 1/1 local vitest scaffold
+TESTS_PASSING: 466/466 upstream + 13/13 vitest compile suite + 18/18 cargo runtime suite
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
-BLOCKERS: NONE for continuing Phase 2 scaffolding
-NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
+BLOCKERS: NONE for continuing Phase 2/3
+NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
 ```
 
 ## What's done
@@ -51,3 +51,21 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 - Hardened payout patterns (`Escrow bilateral`, `Escrow milestone`, `Atomic Swap HTLC`, `Freelance / Payroll`, `TimeLock`, `Vault release`, `Streaming Payment`, `Vesting`) with explicit destination/value checks where tractable.
 - Hardened continuation paths for `Milestone Escrow.approve_milestone` and `Vault` admin transitions with authenticated-output count and retained-value checks.
 - Strengthened compile/AST tests to assert the presence of payout and continuation hardening structures, not just entrypoint names.
+
+## Runtime test coverage (live)
+
+`cargo test --manifest-path runtime-tests/Cargo.toml` (alias: `npm run test:runtime`) compiles each `.sil` contract via `silverscript-lang` and executes the redeem script in `kaspa-txscript`'s `TxScriptEngine` against a hand-built `MutableTransaction` + `UtxoEntry`. Each pattern test pair is (happy path → engine OK, failure mode → `VerifyError|EvalFalse|UnsatisfiedLockTime`).
+
+| Pattern | Path | Positive | Negative |
+| --- | --- | --- | --- |
+| 3.3 TimeLock | `claim` (post-unlock P2PK payout) | ✅ | ✅ wrong dest, ✅ pre-unlock |
+| 3.3 TimeLock | `cancel` (soft-cancel branch) | ✅ enabled | ✅ disabled |
+| 3.4 Vault | `release` (locktime + 2-of-3 sigs + beneficiary sig + payout) | ✅ | ✅ swapped beneficiary |
+| 3.5 Escrow (bilateral) | `release_to_seller` (arbiter + seller co-sign) | ✅ | ✅ payout-to-buyer |
+| 3.5 Escrow (bilateral) | `timeout_reclaim` (buyer post-timeout) | ✅ | — |
+| 3.6 Escrow (milestone) | `approve_milestone` (KIP-20 cov-id continuation) | ✅ | ✅ wrong continuation value |
+| 3.11 HTLC | `claim` (preimage + P2PK to recipient) | ✅ | ✅ wrong preimage |
+| 3.11 HTLC | `refund` (post-timeout to refunder) | ✅ | ✅ pre-timeout |
+| 3.2 MultiSig | `spend` (2-of-3 threshold) | ✅ | ✅ 1-of-3 below threshold |
+
+9 patterns × ~2 paths each = **18 runtime tests, all green**. Remaining patterns to cover: Ownable singleton transitions, Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Freelance/Payroll, plus the Vault admin transitions (`extend_lock`, `reconfigure_signers`, owner handoff) and TimeLock's `extend_lock` singleton.

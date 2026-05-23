@@ -38,7 +38,8 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 | `contracts/` | SilverScript contract source tree scaffold for core, token, and later zk-aware patterns. |
 | `sdk/`, `cli/`, `mcp/`, `wizard/`, `integrations/` | Phase 2 TypeScript workspace scaffold for shared manifest/types, tooling, and integration surfaces. |
 | `docs/site/` | Docusaurus docs-site scaffold. |
-| `tests/` | Vitest-based repo-level tests for manifest/tooling behavior. |
+| `tests/` | Vitest-based compile suite, one test per Phase-3 pattern plus the shared manifest. |
+| `runtime-tests/` | Rust crate that compiles each `.sil` via `silverscript-lang` and executes the redeem script in `kaspa-txscript`'s VM. Run via `npm run test:runtime` or `cargo test --manifest-path runtime-tests/Cargo.toml`. |
 | `.github/workflows/ci.yml` | Baseline CI: install, typecheck, test. |
 | `upstream/silverscript/` | Pinned clone of `kaspanet/silverscript` at `2c46231` (gitignored). |
 | `upstream/kips/` | Pinned clone of `kaspanet/kips` (gitignored). |
@@ -53,6 +54,7 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 
 ## Toolchain
 
-- Upstream: `cargo test -p silverscript-lang` runs **466 tests across 21 suites with 0 failures** at the pinned upstream commit. See `STATUS.md`.
-- Local scaffold: `npm run verify` passes (`tsc -b` + `vitest`), and `npm run docs:build` produces a static Docusaurus build.
+- Upstream: `cargo test -p silverscript-lang` runs **466 tests across 21 suites with 0 failures** at the pinned upstream commit.
+- Compile suite: `npm run verify` (= `tsc -b` + `vitest`) is **13/13 green** — one compile test per Phase-3 pattern plus the shared manifest test.
+- Runtime suite: `npm run test:runtime` (= `cargo test --manifest-path runtime-tests/Cargo.toml`) is **18/18 green**. Each test compiles a `.sil` contract via `silverscript-lang` and executes the redeem script in `kaspa-txscript`'s `TxScriptEngine` against a hand-built `MutableTransaction` + `UtxoEntry`. Pairs are (happy path → engine OK, failure mode → `VerifyError|EvalFalse|UnsatisfiedLockTime`). Covers TimeLock claim/cancel, Vault release composition, BilateralEscrow release + timeout, milestone Escrow KIP-20 continuation, HTLC claim/refund, and MultiSig 2-of-3 thresholding. See `STATUS.md` for the matrix.
 - Phase 3.1 through 3.12 are underway with compiler-validated `contracts/core/ownable.sil`, `contracts/core/multisig.sil`, `contracts/core/timelock.sil`, `contracts/core/vault.sil`, `contracts/core/escrow-bilateral.sil`, `contracts/core/escrow-milestone.sil`, `contracts/core/streaming-payment.sil`, `contracts/core/vesting.sil`, `contracts/core/dead-man-switch.sil`, `contracts/core/social-recovery.sil`, `contracts/core/atomic-swap-htlc.sil`, and `contracts/core/freelance-payroll.sil` scaffolds, plus matching docs/tests.
