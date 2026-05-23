@@ -16,6 +16,14 @@ contract AtomicSwapHTLC(pubkey init_recipient, pubkey init_refunder, byte[32] in
         require(checkSig(refunder_sig, refunder_pk));
     }
 
+    function requireExactPayout(pubkey destination) {
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
+    }
+
     entrypoint function claim(pubkey recipient_pk, sig recipient_sig, byte[] secret) {
         State prev_state = {
             recipient: recipient,
@@ -25,6 +33,7 @@ contract AtomicSwapHTLC(pubkey init_recipient, pubkey init_refunder, byte[32] in
         };
         requireRecipient(recipient_pk, recipient_sig, prev_state);
         require(blake2b(secret) == prev_state.secret_hash);
+        requireExactPayout(prev_state.recipient);
     }
 
     entrypoint function refund(pubkey refunder_pk, sig refunder_sig) {
@@ -36,5 +45,6 @@ contract AtomicSwapHTLC(pubkey init_recipient, pubkey init_refunder, byte[32] in
         };
         require(tx.time >= prev_state.timeout);
         requireRefunder(refunder_pk, refunder_sig, prev_state);
+        requireExactPayout(prev_state.refunder);
     }
 }

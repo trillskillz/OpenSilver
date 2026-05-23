@@ -20,7 +20,8 @@ This first scaffold exposes three release paths:
 - Normal release requires both arbiter approval and seller participation.
 - Refund requires both arbiter approval and buyer participation.
 - Timeout reclaim allows the buyer to recover after `timeout`.
-- This scaffold does not yet constrain exact output shape, amounts, or script destinations.
+- This scaffold now constrains the terminal payout to a single P2PK destination output for the intended party with `input_value - minerFee` conservation on output 0.
+- It still does not model richer split outputs, fee policy abstraction, or multi-output settlement.
 - This scaffold does not yet include milestone state, partial releases, or arbiter replacement.
 
 ## KIP-20 Covenant ID handling

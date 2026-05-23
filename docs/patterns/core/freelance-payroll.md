@@ -22,7 +22,8 @@ Paths:
 - Happy-path release requires both client and worker signatures.
 - Dispute paths require arbiter participation plus the destination party signature.
 - Timeout reclaim protects the client if work stalls.
-- This scaffold does not yet constrain exact payout outputs, milestone partials, invoices, or evidence attachments.
+- This scaffold now constrains the terminal payout to a single P2PK destination output for the intended party with `input_value - minerFee` conservation on output 0.
+- It still does not model milestone partials, invoices, evidence attachments, or richer settlement splits.
 - This scaffold is terminal rather than stateful; milestone payroll would layer on top of Escrow (milestone).
 
 ## KIP-20 Covenant ID handling

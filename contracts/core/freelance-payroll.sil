@@ -21,27 +21,39 @@ contract FreelancePayroll(pubkey init_client, pubkey init_worker, byte[32] init_
         require(checkSig(worker_sig, worker_pk));
     }
 
+    function requireExactPayout(pubkey destination) {
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
+    }
+
     entrypoint function standard_release(pubkey client_pk, sig client_sig, pubkey worker_pk, sig worker_sig) {
         State prev_state = { client: client, worker: worker, arbiter: arbiter, timeout: timeout };
         requireClient(client_pk, client_sig, prev_state);
         requireWorker(worker_pk, worker_sig, prev_state);
+        requireExactPayout(prev_state.worker);
     }
 
     entrypoint function arbiter_refund(pubkey arbiter_pk, sig arbiter_sig, pubkey client_pk, sig client_sig) {
         State prev_state = { client: client, worker: worker, arbiter: arbiter, timeout: timeout };
         requireArbiter(arbiter_pk, arbiter_sig, prev_state);
         requireClient(client_pk, client_sig, prev_state);
+        requireExactPayout(prev_state.client);
     }
 
     entrypoint function arbiter_payout(pubkey arbiter_pk, sig arbiter_sig, pubkey worker_pk, sig worker_sig) {
         State prev_state = { client: client, worker: worker, arbiter: arbiter, timeout: timeout };
         requireArbiter(arbiter_pk, arbiter_sig, prev_state);
         requireWorker(worker_pk, worker_sig, prev_state);
+        requireExactPayout(prev_state.worker);
     }
 
     entrypoint function timeout_reclaim(pubkey client_pk, sig client_sig) {
         State prev_state = { client: client, worker: worker, arbiter: arbiter, timeout: timeout };
         require(tx.time >= prev_state.timeout);
         requireClient(client_pk, client_sig, prev_state);
+        requireExactPayout(prev_state.client);
     }
 }

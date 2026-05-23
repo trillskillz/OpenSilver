@@ -19,7 +19,8 @@ Paths:
 - `claim` requires both recipient authorization and a secret matching `secret_hash`.
 - `refund` requires `tx.time >= timeout`.
 - This scaffold uses `blake2b(secret)` as the hash-lock primitive.
-- This scaffold does not yet constrain output shapes, cross-chain coordination, or proof of reciprocal lock placement.
+- This scaffold now constrains the terminal payout to a single P2PK destination output for the intended party with `input_value - minerFee` conservation on output 0.
+- It still does not model cross-chain coordination or proof of reciprocal lock placement.
 - Secret sizing, reveal encoding, and swap coordination policy still need tightening for production use.
 
 ## KIP-20 Covenant ID handling

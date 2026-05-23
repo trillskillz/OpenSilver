@@ -21,21 +21,32 @@ contract BilateralEscrow(pubkey init_buyer, pubkey init_seller, byte[32] init_ar
         require(checkSig(seller_sig, seller_pk));
     }
 
+    function requireExactPayout(pubkey destination) {
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
+    }
+
     entrypoint function release_to_seller(pubkey arbiter_pk, sig arbiter_sig, pubkey seller_pk, sig seller_sig) {
         State prev_state = { buyer: buyer, seller: seller, arbiter: arbiter, timeout: timeout };
         requireArbiter(arbiter_pk, arbiter_sig, prev_state);
         requireSeller(seller_pk, seller_sig, prev_state);
+        requireExactPayout(prev_state.seller);
     }
 
     entrypoint function refund_to_buyer(pubkey arbiter_pk, sig arbiter_sig, pubkey buyer_pk, sig buyer_sig) {
         State prev_state = { buyer: buyer, seller: seller, arbiter: arbiter, timeout: timeout };
         requireArbiter(arbiter_pk, arbiter_sig, prev_state);
         requireBuyer(buyer_pk, buyer_sig, prev_state);
+        requireExactPayout(prev_state.buyer);
     }
 
     entrypoint function timeout_reclaim(pubkey buyer_pk, sig buyer_sig) {
         State prev_state = { buyer: buyer, seller: seller, arbiter: arbiter, timeout: timeout };
         require(tx.time >= prev_state.timeout);
         requireBuyer(buyer_pk, buyer_sig, prev_state);
+        requireExactPayout(prev_state.buyer);
     }
 }
