@@ -11,5 +11,7 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[0]?.docPath).toBe('docs/patterns/core/ownable.md');
     expect(patterns[1]?.id).toBe('core.multisig');
     expect(patterns[1]?.status).toBe('scaffolded');
+    expect(patterns[2]?.id).toBe('core.timelock');
+    expect(patterns[2]?.status).toBe('scaffolded');
   });
 });

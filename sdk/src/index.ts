@@ -32,6 +32,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/multisig.sil',
     docPath: 'docs/patterns/core/multisig.md',
   },
+  {
+    id: 'core.timelock',
+    title: 'TimeLock',
+    phase: 'core',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Time-locked release scaffold with hard/soft cancel modes and a forward-only lock extension path.',
+    contractPath: 'contracts/core/timelock.sil',
+    docPath: 'docs/patterns/core/timelock.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {
