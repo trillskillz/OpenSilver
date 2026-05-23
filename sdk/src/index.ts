@@ -72,6 +72,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/escrow-milestone.sil',
     docPath: 'docs/patterns/core/escrow-milestone.md',
   },
+  {
+    id: 'core.streaming-payment',
+    title: 'Streaming Payment',
+    phase: 'core',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Recurring-payment scaffold with recipient withdrawals, remaining allowance tracking, and sender cancellation.',
+    contractPath: 'contracts/core/streaming-payment.sil',
+    docPath: 'docs/patterns/core/streaming-payment.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {

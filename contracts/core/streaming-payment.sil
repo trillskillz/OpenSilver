@@ -1,0 +1,76 @@
+pragma silverscript ^0.1.0;
+
+contract StreamingPayment(
+    pubkey init_sender,
+    pubkey init_recipient,
+    int init_rate_per_claim,
+    int init_total_allowance,
+    int init_remaining_allowance,
+    int init_period,
+    int init_next_release_time
+) {
+    pubkey sender = init_sender;
+    pubkey recipient = init_recipient;
+    int rate_per_claim = init_rate_per_claim;
+    int total_allowance = init_total_allowance;
+    int remaining_allowance = init_remaining_allowance;
+    int period = init_period;
+    int next_release_time = init_next_release_time;
+
+    function requireSender(pubkey sender_pk, sig sender_sig, State prev_state) {
+        require(sender_pk == prev_state.sender);
+        require(checkSig(sender_sig, sender_pk));
+    }
+
+    function requireRecipient(pubkey recipient_pk, sig recipient_sig, State prev_state) {
+        require(recipient_pk == prev_state.recipient);
+        require(checkSig(recipient_sig, recipient_pk));
+    }
+
+    function requireValidStream(State prev_state) {
+        require(prev_state.rate_per_claim > 0);
+        require(prev_state.total_allowance >= prev_state.rate_per_claim);
+        require(prev_state.remaining_allowance >= 0);
+        require(prev_state.total_allowance >= prev_state.remaining_allowance);
+        require(prev_state.period >= 0);
+    }
+
+    #[covenant.singleton(mode = transition, termination = allowed)]
+    function withdraw(State prev_state, pubkey recipient_pk, sig recipient_sig, State[] next_states) : (State[]) {
+        requireValidStream(prev_state);
+        requireRecipient(recipient_pk, recipient_sig, prev_state);
+        require(tx.time >= prev_state.next_release_time);
+        require(prev_state.remaining_allowance > 0);
+
+        int next_remaining = prev_state.remaining_allowance - prev_state.rate_per_claim;
+        if (next_remaining > 0) {
+            require(next_states.length == 1);
+            return([{
+                sender: prev_state.sender,
+                recipient: prev_state.recipient,
+                rate_per_claim: prev_state.rate_per_claim,
+                total_allowance: prev_state.total_allowance,
+                remaining_allowance: next_remaining,
+                period: prev_state.period,
+                next_release_time: prev_state.next_release_time + prev_state.period
+            }]);
+        }
+
+        require(next_states.length == 0);
+        return([]);
+    }
+
+    entrypoint function cancel(pubkey sender_pk, sig sender_sig) {
+        State prev_state = {
+            sender: sender,
+            recipient: recipient,
+            rate_per_claim: rate_per_claim,
+            total_allowance: total_allowance,
+            remaining_allowance: remaining_allowance,
+            period: period,
+            next_release_time: next_release_time
+        };
+        requireValidStream(prev_state);
+        requireSender(sender_pk, sender_sig, prev_state);
+    }
+}
