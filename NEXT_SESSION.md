@@ -10,11 +10,11 @@ Autonomous work picked up by the next agent run. Nothing here requires user inpu
 - KCC20 ↔ KRC-20 naming is open; raised as outreach question #2 to Newman.
 - Remaining: read `kcc20-minter-contract.md` and `scenarios.md` for deep-dive on controller covenant + worked happy/sad paths (deferred to Phase 3 when actually building the pattern).
 
-### 2. `kaspacom-defi-mcp` scope-boundary scan
-- Clone `https://github.com/kaspacom/kaspacom-defi-mcp` (or the canonical org path; find via GitHub search if the URL guess is wrong).
-- Enumerate every tool the MCP exposes.
-- Output: `docs/integrations/KASPACOM_MCP_BOUNDARY.md` listing their tools vs. OpenSilver MCP tools (`list_patterns`, `get_pattern`, `generate_covenant`, `validate_covenant`, `audit_covenant`, `check_kip20_compliance`, `estimate_costs`).
-- Identify federation strategy: are we strictly broader (general patterns vs. DeFi-specific), or is there real overlap that needs renegotiating?
+### 2. `kaspacom-defi-mcp` scope-boundary scan ✅ DONE 2026-05-23
+- Cloned `KASPACOM/kaspacom-defi-mcp` master (found via `gh search repos`).
+- Enumerated 15 tools (DEX 5, Lending 5, Launchpad 3, Portfolio/Info 2).
+- Output: `docs/integrations/KASPACOM_MCP_BOUNDARY.md`. Key finding: their MCP is **L2 DeFi-specific** (Igra/Kasplex EVM, Solidity); ours is **L1 covenant-specific** (TN12/Toccata, SilverScript). Adjacent layers, no overlap, no federation required.
+- Three open questions raised for outreach (KASPACOM L1 covenant plans, wallet-as-integration-target, MCP hosting infra).
 
 ### 3. KaspaCom wallet covenant templates
 - Locate the wallet's covenant-template code on GitHub (likely `kaspacom/kaspa-wallet` or similar).
