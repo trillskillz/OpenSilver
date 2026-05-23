@@ -1,0 +1,31 @@
+{
+  "name": "opensilver",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "OpenSilver monorepo scaffold for SilverScript covenant patterns and tooling.",
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "sdk",
+    "cli",
+    "mcp",
+    "wizard",
+    "integrations",
+    "docs/site"
+  ],
+  "scripts": {
+    "build": "tsc -b sdk cli mcp wizard integrations",
+    "clean": "rm -rf sdk/dist cli/dist mcp/dist wizard/dist integrations/dist coverage docs/site/.docusaurus",
+    "docs:build": "npm run build --workspace @opensilver/docs-site",
+    "docs:start": "npm run start --workspace @opensilver/docs-site",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b sdk cli mcp wizard integrations",
+    "verify": "npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -42,7 +42,7 @@ Before any code, understand the existing landscape:
 | Hans Moog vProgs PRs | Long-term vProgs node framework | Forward-compatibility target. Patterns must not block vProgs migration. |
 | Saefstroem Groth16 verifier PR | ZK opcodes on Rusty Kaspa | Foundation for ZK-aware patterns in OpenSilver. |
 
-**Hard rule: coordinate with these projects in Phase 0 before writing code.** Operating in good faith within the Kaspa community is non-negotiable.
+**Working rule: coordinate with these projects early and continuously, but do not block implementation on acknowledgements.** Operating in good faith within the Kaspa community is non-negotiable, and outreach should run in parallel with delivery.
 
 ---
 
@@ -113,7 +113,7 @@ Before any code, understand the existing landscape:
 
 ## PHASE 0 — ECOSYSTEM COORDINATION (NEW)
 
-Before writing a single line of code, talk to the people already in this space.
+Start coordination immediately, but run it in parallel with reconnaissance and scaffolding so the project does not stall waiting on outside responses.
 
 **Task 0.1 — Read everything**
 - Read the entire `kaspanet/silverscript` repo end to end
@@ -143,7 +143,7 @@ Document:
 - Confirmed overlaps and how to handle them
 - Letters of support or explicit "no objection" responses
 
-**Output of Phase 0:** Documented coordination state. **Do not proceed to Phase 1 until at least Sutton OR Newman has acknowledged the project, even if briefly.**
+**Output of Phase 0:** Documented coordination state. Outreach remains strongly recommended, but lack of acknowledgement is not a blocker for Phase 1 or Phase 2.
 
 ---
 
@@ -176,7 +176,7 @@ Document:
 - Map every relevant pattern to a SilverScript equivalent
 - Output: `PATTERN_MAPPING.md`
 
-**Output of Phase 1:** Three reference docs (`KIP_REFERENCE.md`, `PATTERN_MAPPING.md`, language deep-dive). **Stop and confirm before Phase 2.**
+**Output of Phase 1:** Three reference docs (`KIP_REFERENCE.md`, `PATTERN_MAPPING.md`, language deep-dive). Use these to guide Phase 2 scaffolding and Phase 3 implementation.
 
 ---
 
@@ -492,7 +492,7 @@ PATTERNS_LIVE: <count>
 
 ## RULES OF ENGAGEMENT
 
-1. **Phase 0 is a hard gate.** Do not write a single line of pattern code until coordination outreach is documented. Acting in good faith within the community is non-negotiable.
+1. **Phase 0 is a parallel workstream, not a hard gate.** Document outreach and feedback as it arrives, but continue implementation unless concrete upstream conflicts are discovered.
 2. **Sutton's security-by-construction principle is the governing philosophy.** Every pattern is reviewed against it.
 3. **KIP-20 Covenant IDs are the foundation.** Every stateful pattern uses them. Recursive lineage proofs are an anti-pattern.
 4. **Every pattern is dogfooded.** OpenSilver patterns must be used by KasBonds first as proof of fitness.

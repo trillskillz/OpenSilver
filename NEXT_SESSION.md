@@ -1,8 +1,14 @@
 # Next-session queue
 
-Autonomous work picked up by the next agent run. Nothing here requires user input; everything is reading + writing recon docs (Phase 0/1 territory, permitted under the hard gate). When this file is empty, prompt for the next phase.
+Autonomous work picked up by the next agent run. Coordination continues, but implementation can proceed. This queue now tracks the remaining recon work plus active Phase 2 scaffolding.
 
 ## Queue (in order)
+
+### 0. Phase 2 scaffold follow-through ✅ PARTIALLY DONE 2026-05-23
+- Created monorepo directories for `contracts`, `sdk`, `cli`, `mcp`, `wizard`, `integrations`, `docs`, `examples`, `tests`, and `benchmarks`.
+- Added strict TypeScript + Vitest tooling, workspace config, baseline CI, and a Docusaurus docs-site seed.
+- Added a first shared pattern-manifest/types surface in `sdk/` and wired basic consumers in CLI/MCP/Wizard/Integrations.
+- Remaining: expand the manifest schema, add contract-compilation hooks, and decide whether to vendor the compiler or reference the pinned upstream clone.
 
 ### 1. KCC20 book — Pattern 4.1 dependency ✅ DONE 2026-05-23
 - Read introduction, overview, kcc20-contract, what-the-tests-demonstrate.
@@ -58,4 +64,4 @@ Autonomous work picked up by the next agent run. Nothing here requires user inpu
 
 ## Exit criteria (when this file empties)
 
-All items above complete → flip `STATUS.md` `PHASE_0_STATUS` to `READY_FOR_PHASE_2` and prompt the user for outreach status. Until at least one acknowledgement from Sutton OR Newman is recorded in `ECOSYSTEM_COORDINATION.md`, **do not begin Phase 2 scaffolding or pattern-code implementation**.
+All items above complete → flip `STATUS.md` to reflect Phase 2 completion and prompt for the next implementation slice. Keep recording outreach status in `ECOSYSTEM_COORDINATION.md` as responses arrive, but do not block execution on acknowledgements.

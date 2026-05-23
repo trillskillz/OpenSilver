@@ -4,7 +4,7 @@ The OpenZeppelin of Kaspa. A battle-tested library of standard covenant patterns
 
 MIT licensed. Public from first commit. Currently in **Phase 0 — Ecosystem Coordination**.
 
-See `PLAN.md` for the full implementation framework. See `ECOSYSTEM_COORDINATION.md` for live status of community outreach (Phase 0 is a hard gate — no pattern code is written until coordination is documented).
+See `PLAN.md` for the full implementation framework. See `ECOSYSTEM_COORDINATION.md` for live status of community outreach, which now runs in parallel with implementation.
 
 ## Guiding Principles
 
@@ -16,9 +16,9 @@ See `PLAN.md` for the full implementation framework. See `ECOSYSTEM_COORDINATION
 
 ## Status
 
-Phase 0 — Ecosystem Coordination — IN PROGRESS
+Phase 2 — Repo Scaffold — IN PROGRESS
 
-Reading-list reconnaissance is largely complete and pushed; the remaining work in Phase 0 is **outreach to Michael Sutton and Ori Newman** (drafts in `ECOSYSTEM_COORDINATION.md`) plus a final forward-compat pass on vProgs / KIP-16 implementation notes. One acknowledgement clears the gate to Phase 2.
+Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael Sutton and Ori Newman remains recommended (drafts in `ECOSYSTEM_COORDINATION.md`), but it no longer blocks implementation. The repo now includes the first monorepo scaffold, baseline TypeScript/Vitest tooling, CI, and a Docusaurus docs-site seed.
 
 ## Map of this repo
 
@@ -35,12 +35,17 @@ Reading-list reconnaissance is largely complete and pushed; the remaining work i
 | `PATTERN_MAPPING.md` | Upstream examples × neighbouring ecosystems × OpenSilver V1 catalogue + DECL.md composition shapes. |
 | `KASBONDS_AUDIT.md` | Phase 1 Task 1.3 audit. Identifies promotable patterns. |
 | `docs/ecosystem/AWESOME_KASPA_SCAN.md` | Covenant-relevant scan of the broader Kaspa ecosystem from `awesome-kaspa`, with likely downstream integration targets. |
+| `contracts/` | SilverScript contract source tree scaffold for core, token, and later zk-aware patterns. |
+| `sdk/`, `cli/`, `mcp/`, `wizard/`, `integrations/` | Phase 2 TypeScript workspace scaffold for shared manifest/types, tooling, and integration surfaces. |
+| `docs/site/` | Docusaurus docs-site scaffold. |
+| `tests/` | Vitest-based repo-level tests for manifest/tooling behavior. |
+| `.github/workflows/ci.yml` | Baseline CI: install, typecheck, test. |
 | `upstream/silverscript/` | Pinned clone of `kaspanet/silverscript` at `2c46231` (gitignored). |
 | `upstream/kips/` | Pinned clone of `kaspanet/kips` (gitignored). |
 
 ## Pattern catalogue (target — none built yet)
 
-22 patterns across three groups, all gated on Phase 0 closing:
+22 patterns across three groups, informed by Phase 0 findings but not blocked on Phase 0 acknowledgement:
 
 - **Phase 3 — Core (12):** Ownable, MultiSig, TimeLock, Vault, Escrow (bilateral), Escrow (milestone), Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Atomic Swap (HTLC), Freelance/Payroll.
 - **Phase 4 — KRC-20 (6):** Reference, Ownable, Pausable, Capped, Vesting, Snapshot.
@@ -48,4 +53,5 @@ Reading-list reconnaissance is largely complete and pushed; the remaining work i
 
 ## Toolchain
 
-`cargo test -p silverscript-lang` runs **466 tests across 21 suites with 0 failures** at the pinned upstream commit. See `STATUS.md`.
+- Upstream: `cargo test -p silverscript-lang` runs **466 tests across 21 suites with 0 failures** at the pinned upstream commit. See `STATUS.md`.
+- Local scaffold: `npm run verify` passes (`tsc -b` + `vitest`), and `npm run docs:build` produces a static Docusaurus build.

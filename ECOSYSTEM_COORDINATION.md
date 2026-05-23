@@ -1,6 +1,6 @@
 # Ecosystem Coordination — Phase 0
 
-> **Hard gate.** No pattern code is written until at least Michael Sutton OR Ori Newman has acknowledged the project.
+> **Parallel workstream.** Outreach is strongly recommended and tracked here, but implementation is not blocked on acknowledgements.
 
 Last updated: 2026-05-23
 
@@ -57,7 +57,7 @@ Coordination, not permission. We need to discover:
 - **Already covered in upstream (current best reference):**
   - Four state-transition builtins in `std/builtins.sil` (`validateOutputState`, `validateOutputStateWithTemplate`, `readInputState`, `readInputStateWithTemplate`). These are the **entire** stateful covenant surface and every OpenSilver pattern compiles to them. See `LANGUAGE_DEEP_DIVE.md`.
   - Working but minimal example contracts in `tests/examples/`: 2-of-3 MultiSig, TransferWithTimeout, HodlVault, covenant Escrow, LastWill, Mecenas, KCC20 + KCC20 Minter. These map cleanly onto Phase 3 patterns 3.2, 3.3, 3.5, 3.7, 3.9, and Phase 4 pattern 4.1.
-- **Confirmed gaps OpenSilver fills (preliminary, awaiting Sutton/Newman confirmation):**
+- **Confirmed gaps OpenSilver fills (preliminary, pending external feedback but not blocked on it):**
   - No N-of-M MultiSig with key rotation (upstream has fixed `pk1, pk2, pk3`).
   - No Vault composition (Ownable + TimeLock + MultiSig).
   - No milestone Escrow (only bilateral arbiter release).
@@ -67,9 +67,9 @@ Coordination, not permission. We need to discover:
   - No SDK / TS glue for any pattern.
   - No `audit_covenant` / `check_kip20_compliance` tooling.
 - **Confirmed overlaps + how handled:** none yet. KCC20 reference in upstream will be *the* reference impl; our 4.1 will be a documented, tested, SDK-wrapped re-export, not a fork.
-- **Letters of support / no-objection:** none yet. Outreach not sent (blocker: outreach happens via X/Discord/GitHub from the user's account, not from this session).
+- **Letters of support / no-objection:** none yet. Outreach not sent. Feedback remains useful, but implementation can proceed in parallel.
 
-## 0.4 — Recon docs in repo (Phase 1 outputs drafted in parallel — non-pattern code, permitted under hard gate)
+## 0.4 — Recon docs in repo (Phase 1 outputs drafted in parallel)
 
 - `LANGUAGE_DEEP_DIVE.md` — SilverScript surface as observed at `2c46231`, including the `#[covenant(...)]` declaration sugar from `DECL.md`.
 - `KIP_REFERENCE.md` — pointer + hard rules table; details in `references/kips/SUMMARY.md`.
@@ -82,6 +82,6 @@ Coordination, not permission. We need to discover:
 
 - [ ] Reading list complete (all upstream sources read, notes captured)
 - [ ] Outreach sent to all six contacts
-- [ ] At least one acknowledgment from Sutton OR Newman recorded here
+- [ ] Any acknowledgments or technical feedback recorded here as they arrive
 - [ ] Findings section populated
 - [ ] Phase 1 reconnaissance docs (`KIP_REFERENCE.md`, `PATTERN_MAPPING.md`, language deep-dive) drafted

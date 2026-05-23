@@ -1,6 +1,11 @@
 node_modules/
 dist/
 build/
+coverage/
+.docusaurus/
+.cache/
+*.tsbuildinfo
+.firecrawl/
 .env
 .env.local
 *.log

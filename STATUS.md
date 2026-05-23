@@ -1,16 +1,18 @@
 # OpenSilver — Status
 
 ```
-PHASE_0_STATUS: IN_PROGRESS (reading complete; outreach gated on user)
+PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
+PHASE_2_STATUS: IN_PROGRESS (initial monorepo scaffold landed)
 PATTERNS_COMPLETE: 0/22
 TESTNET_TXS: []
-DOCS_PAGES: 10 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
+DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
-              references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN)
-TESTS_PASSING: 466/466 (upstream silverscript-lang at 2c46231)
-ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user)
-BLOCKERS: outreach to Sutton OR Newman must be sent + acknowledged before Phase 2
-NEXT_PHASE: 0 (must clear coordination gate); Phase 1 outputs already drafted
+              references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
+              docs/site/docs/intro)
+TESTS_PASSING: 466/466 upstream + 1/1 local vitest scaffold
+ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
+BLOCKERS: NONE for continuing Phase 2 scaffolding
+NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 ```
 
 ## What's done
@@ -23,16 +25,14 @@ NEXT_PHASE: 0 (must clear coordination gate); Phase 1 outputs already drafted
 - KasBonds audit complete (`KASBONDS_AUDIT.md`): two promotable patterns identified.
 - Updated recon docs: `LANGUAGE_DEEP_DIVE.md`, `KIP_REFERENCE.md`, `PATTERN_MAPPING.md`.
 - Added `docs/ecosystem/AWESOME_KASPA_SCAN.md` to map covenant-relevant downstream projects and Phase 11.3 outreach targets.
+- Landed initial Phase 2 scaffold: workspace directories, strict TypeScript config, Vitest, baseline CI, docs-site seed, and shared pattern-manifest surface.
 
 ## What's blocked on the user
 
-- **Outreach.** Sutton + Newman drafts in `ECOSYSTEM_COORDINATION.md:37-47`. At least one acknowledgement is the gate to Phase 2.
-- **Sutton's Medium post** ("Kaspa Covenants++ Toccata Hard-Fork Outlook") + **Kaspero Labs Studio docs** — would prefer to fetch these explicitly rather than synthesise from memory; awaiting permission to use a web-fetch tool / firecrawl skill.
+- **Outreach.** Sutton + Newman drafts in `ECOSYSTEM_COORDINATION.md:37-47`. Helpful for course-correction, but no longer a gate.
 
-## What can still be done autonomously (Phase 1 finish)
+## What can still be done autonomously next
 
-1. KCC20 book under `docs/kcc20-book/` (token spec; tied to Pattern 4.1).
-2. `kaspacom-defi-mcp` source code on GitHub — confirm scope boundary with our planned MCP.
-3. KaspaCom covenant wallet templates on GitHub — identify pattern surface for Phase 8.2 integration.
-4. Aiken stdlib + CashScript stdlib + OpenZeppelin cross-reference fill-in.
-5. Hans Moog vProgs PRs + KIP-16 implementation-level notes.
+1. Finish the remaining Phase 0/1 reading gaps (Sutton Medium post, Kaspero Labs Studio docs, vProgs / KIP-16 implementation notes).
+2. Flesh out the shared manifest/types surface so wallet, IDE, and MCP consumers all read the same pattern metadata.
+3. Start Phase 3.1 Ownable as the first concrete pattern slice under the new scaffold.
