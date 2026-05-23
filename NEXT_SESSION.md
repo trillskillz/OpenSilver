@@ -4,11 +4,11 @@ Autonomous work picked up by the next agent run. Nothing here requires user inpu
 
 ## Queue (in order)
 
-### 1. KCC20 book — Pattern 4.1 dependency
-- Read `upstream/silverscript/docs/kcc20-book/` end to end.
-- Cross-reference `tests/examples/kcc20.sil` + `kcc20-minter.sil`.
-- Output: `docs/standards/KCC20.md` covering identifier types (pubkey / script-hash / cov-id), mint authorization, transfer N:M shape, and the security checklist for any KRC-20 derivative pattern.
-- Verify the assumption that KCC20 ≅ KRC-20 (mainnet name) and document the relationship.
+### 1. KCC20 book — Pattern 4.1 dependency ✅ DONE 2026-05-23
+- Read introduction, overview, kcc20-contract, what-the-tests-demonstrate.
+- Output: `docs/standards/KCC20.md` covering identifier types, supply rules, security checklist, three-phase lifecycle, and revised 4.x slot mapping (5 of 6 variants are controller-side, leaving asset contract stable).
+- KCC20 ↔ KRC-20 naming is open; raised as outreach question #2 to Newman.
+- Remaining: read `kcc20-minter-contract.md` and `scenarios.md` for deep-dive on controller covenant + worked happy/sad paths (deferred to Phase 3 when actually building the pattern).
 
 ### 2. `kaspacom-defi-mcp` scope-boundary scan
 - Clone `https://github.com/kaspacom/kaspacom-defi-mcp` (or the canonical org path; find via GitHub search if the URL guess is wrong).
