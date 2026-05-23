@@ -23,10 +23,12 @@ Autonomous work picked up by the next agent run. Nothing here requires user inpu
 - Output: `docs/integrations/KASPACOM_WALLET.md` with the full repo map, the x402 covenant analysis, and a proposed JSON pattern-manifest shape that doubles as the OpenSilver MCP `list_patterns` payload.
 - Raised a fourth outreach question for KASPACOM about wallet roadmap and manifest preference.
 
-### 4. SilverScript Studio (Kaspero Labs)
-- Find the IDE source repo. Likely `kasperolabs/silverscript-studio` or similar.
-- Document IDE plugin / extension surface — what defines a "library" inside the IDE? What format does the IDE expect for an importable pattern?
-- Output: `docs/integrations/STUDIO_LIBRARY_FORMAT.md`.
+### 4. SilverScript Studio (Kaspero Labs) ✅ DONE 2026-05-23
+- Surveyed Kaspero Labs' six public repos. **Studio doesn't exist publicly yet** — `kasperolabs/silverscript-ext` is an empty README placeholder.
+- Manyfest's `Manyfestation/silver-lab` is an empty name stake-out and is the more likely Studio home given Manyfest is a SilverScript co-author.
+- Adjacent goldmine found: `silverscript-lang/tests/covenant_declaration_security_tests.rs` is the canonical security-test suite for the `#[covenant(...)]` macro. Catalogued in `STUDIO_LIBRARY_FORMAT.md`; this is the seed checklist for the Phase 7 `audit_covenant` MCP tool.
+- Output: `docs/integrations/STUDIO_LIBRARY_FORMAT.md` with a proposed three-consumer JSON manifest (wallet + MCP + IDE share one source of truth).
+- Added a fifth outreach question for Kaspero Labs and one for Manyfest.
 
 ### 5. Neighbouring-ecosystem stdlibs (fill in `PATTERN_MAPPING.md`)
 - **OpenZeppelin Contracts** (Solidity): map every relevant pattern. Focus on `access`, `token/ERC20`, `governance`, `finance/VestingWallet`, `security/Pausable`.
