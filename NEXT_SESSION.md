@@ -19,6 +19,7 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 - Phase 3.8 has started with a stateful `Vesting` scaffold exposing cliff-gated claims, claimed-amount tracking, and optional revocation; next work is revocation accounting and output constraints.
 - Phase 3.9 has started with a stateful `Dead Man's Switch` scaffold exposing owner keepalive, fallback claim, and fallback rotation; next work is timer semantics and output constraints.
 - Phase 3.10 has started with a stateful `Social Recovery` scaffold exposing guardian-quorum initiation, delayed finalization, and owner cancellation; next work is guardian rotation and activation-delay derivation.
+- Phase 3.11 has started with an `Atomic Swap (HTLC)` scaffold exposing recipient claim by secret preimage and timeout refund; next work is secret-format tightening and output constraints.
 
 ### 1. KCC20 book — Pattern 4.1 dependency ✅ DONE 2026-05-23
 - Read introduction, overview, kcc20-contract, what-the-tests-demonstrate.

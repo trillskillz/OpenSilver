@@ -27,5 +27,7 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[8]?.status).toBe('scaffolded');
     expect(patterns[9]?.id).toBe('core.social-recovery');
     expect(patterns[9]?.status).toBe('scaffolded');
+    expect(patterns[10]?.id).toBe('core.atomic-swap-htlc');
+    expect(patterns[10]?.status).toBe('scaffolded');
   });
 });

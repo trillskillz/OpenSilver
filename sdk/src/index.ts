@@ -112,6 +112,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/social-recovery.sil',
     docPath: 'docs/patterns/core/social-recovery.md',
   },
+  {
+    id: 'core.atomic-swap-htlc',
+    title: 'Atomic Swap (HTLC)',
+    phase: 'core',
+    stateful: false,
+    status: 'scaffolded',
+    summary: 'Hash time-locked contract scaffold with recipient claim and timeout refund paths.',
+    contractPath: 'contracts/core/atomic-swap-htlc.sil',
+    docPath: 'docs/patterns/core/atomic-swap-htlc.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {

@@ -3,7 +3,7 @@
 ```
 PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
 PHASE_2_STATUS: IN_PROGRESS (initial monorepo scaffold landed)
-PATTERNS_COMPLETE: 0/22 (10 scaffolds started: Ownable, MultiSig, TimeLock, Vault, Escrow bilateral, Escrow milestone, Streaming Payment, Vesting, Dead Man's Switch, Social Recovery)
+PATTERNS_COMPLETE: 0/22 (11 scaffolds started: Ownable, MultiSig, TimeLock, Vault, Escrow bilateral, Escrow milestone, Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Atomic Swap HTLC)
 TESTNET_TXS: []
 DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
@@ -36,6 +36,7 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 - Started Phase 3.8 Vesting with `contracts/core/vesting.sil`, `docs/patterns/core/vesting.md`, example placeholder, and compiler-backed AST validation.
 - Started Phase 3.9 Dead Man's Switch with `contracts/core/dead-man-switch.sil`, `docs/patterns/core/dead-man-switch.md`, example placeholder, and compiler-backed AST validation.
 - Started Phase 3.10 Social Recovery with `contracts/core/social-recovery.sil`, `docs/patterns/core/social-recovery.md`, example placeholder, and compiler-backed AST validation.
+- Started Phase 3.11 Atomic Swap (HTLC) with `contracts/core/atomic-swap-htlc.sil`, `docs/patterns/core/atomic-swap-htlc.md`, example placeholder, and compiler-backed AST validation.
 
 ## What's blocked on the user
 
@@ -45,4 +46,4 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 
 1. Finish the remaining Phase 0/1 reading gaps (Sutton Medium post, Kaspero Labs Studio docs, vProgs / KIP-16 implementation notes).
 2. Flesh out the shared manifest/types surface so wallet, IDE, and MCP consumers all read the same pattern metadata.
-3. Expand Phase 3.1/3.2/3.3/3.4/3.5/3.6/3.7/3.8/3.9/3.10 with behavior-level tests, failure-mode notes, and start adding output-shape/value-conservation checks where the patterns are currently scaffolds.
+3. Expand Phase 3.1/3.2/3.3/3.4/3.5/3.6/3.7/3.8/3.9/3.10/3.11 with behavior-level tests, failure-mode notes, and start adding output-shape/value-conservation checks where the patterns are currently scaffolds.

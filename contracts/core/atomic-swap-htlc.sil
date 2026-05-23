@@ -1,0 +1,40 @@
+pragma silverscript ^0.1.0;
+
+contract AtomicSwapHTLC(pubkey init_recipient, pubkey init_refunder, byte[32] init_secret_hash, int init_timeout) {
+    pubkey recipient = init_recipient;
+    pubkey refunder = init_refunder;
+    byte[32] secret_hash = init_secret_hash;
+    int timeout = init_timeout;
+
+    function requireRecipient(pubkey recipient_pk, sig recipient_sig, State prev_state) {
+        require(recipient_pk == prev_state.recipient);
+        require(checkSig(recipient_sig, recipient_pk));
+    }
+
+    function requireRefunder(pubkey refunder_pk, sig refunder_sig, State prev_state) {
+        require(refunder_pk == prev_state.refunder);
+        require(checkSig(refunder_sig, refunder_pk));
+    }
+
+    entrypoint function claim(pubkey recipient_pk, sig recipient_sig, byte[] secret) {
+        State prev_state = {
+            recipient: recipient,
+            refunder: refunder,
+            secret_hash: secret_hash,
+            timeout: timeout
+        };
+        requireRecipient(recipient_pk, recipient_sig, prev_state);
+        require(blake2b(secret) == prev_state.secret_hash);
+    }
+
+    entrypoint function refund(pubkey refunder_pk, sig refunder_sig) {
+        State prev_state = {
+            recipient: recipient,
+            refunder: refunder,
+            secret_hash: secret_hash,
+            timeout: timeout
+        };
+        require(tx.time >= prev_state.timeout);
+        requireRefunder(refunder_pk, refunder_sig, prev_state);
+    }
+}
