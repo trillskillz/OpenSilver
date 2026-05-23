@@ -1,0 +1,81 @@
+pragma silverscript ^0.1.0;
+
+contract Vesting(
+    pubkey init_beneficiary,
+    pubkey init_admin,
+    int init_total_allocation,
+    int init_claimed_amount,
+    int init_cliff_time,
+    int init_period,
+    int init_release_per_period,
+    bool init_revocable
+) {
+    pubkey beneficiary = init_beneficiary;
+    pubkey admin = init_admin;
+    int total_allocation = init_total_allocation;
+    int claimed_amount = init_claimed_amount;
+    int cliff_time = init_cliff_time;
+    int period = init_period;
+    int release_per_period = init_release_per_period;
+    bool revocable = init_revocable;
+
+    function requireBeneficiary(pubkey beneficiary_pk, sig beneficiary_sig, State prev_state) {
+        require(beneficiary_pk == prev_state.beneficiary);
+        require(checkSig(beneficiary_sig, beneficiary_pk));
+    }
+
+    function requireAdmin(pubkey admin_pk, sig admin_sig, State prev_state) {
+        require(admin_pk == prev_state.admin);
+        require(checkSig(admin_sig, admin_pk));
+    }
+
+    function requireValidVesting(State prev_state) {
+        require(prev_state.total_allocation > 0);
+        require(prev_state.claimed_amount >= 0);
+        require(prev_state.total_allocation >= prev_state.claimed_amount);
+        require(prev_state.release_per_period > 0);
+        require(prev_state.period >= 0);
+    }
+
+    #[covenant.singleton(mode = transition, termination = allowed)]
+    function claim(State prev_state, pubkey beneficiary_pk, sig beneficiary_sig, State[] next_states) : (State[]) {
+        requireValidVesting(prev_state);
+        requireBeneficiary(beneficiary_pk, beneficiary_sig, prev_state);
+        require(tx.time >= prev_state.cliff_time);
+        require(prev_state.claimed_amount < prev_state.total_allocation);
+
+        int next_claimed = prev_state.claimed_amount + prev_state.release_per_period;
+        if (prev_state.total_allocation > next_claimed) {
+            require(next_states.length == 1);
+            return([{
+                beneficiary: prev_state.beneficiary,
+                admin: prev_state.admin,
+                total_allocation: prev_state.total_allocation,
+                claimed_amount: next_claimed,
+                cliff_time: prev_state.cliff_time + prev_state.period,
+                period: prev_state.period,
+                release_per_period: prev_state.release_per_period,
+                revocable: prev_state.revocable
+            }]);
+        }
+
+        require(next_states.length == 0);
+        return([]);
+    }
+
+    entrypoint function revoke(pubkey admin_pk, sig admin_sig) {
+        State prev_state = {
+            beneficiary: beneficiary,
+            admin: admin,
+            total_allocation: total_allocation,
+            claimed_amount: claimed_amount,
+            cliff_time: cliff_time,
+            period: period,
+            release_per_period: release_per_period,
+            revocable: revocable
+        };
+        requireValidVesting(prev_state);
+        require(prev_state.revocable);
+        requireAdmin(admin_pk, admin_sig, prev_state);
+    }
+}

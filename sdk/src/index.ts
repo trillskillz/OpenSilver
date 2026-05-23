@@ -82,6 +82,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/streaming-payment.sil',
     docPath: 'docs/patterns/core/streaming-payment.md',
   },
+  {
+    id: 'core.vesting',
+    title: 'Vesting',
+    phase: 'core',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Discrete-step vesting scaffold with cliff gating, claimed-amount tracking, and optional admin revocation.',
+    contractPath: 'contracts/core/vesting.sil',
+    docPath: 'docs/patterns/core/vesting.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {

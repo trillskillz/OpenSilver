@@ -16,6 +16,7 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 - Phase 3.5 has started with a bilateral `Escrow` scaffold exposing release/refund/timeout paths; next work is output-shape constraints and value-conservation checks.
 - Phase 3.6 has started with a stateful milestone `Escrow` scaffold exposing monotonic milestone progression, final release, dispute refund, and timeout reclaim; next work is payout accounting and output constraints.
 - Phase 3.7 has started with a stateful `Streaming Payment` scaffold exposing recipient withdrawals, remaining-allowance tracking, and sender cancellation; next work is payout accounting and output constraints.
+- Phase 3.8 has started with a stateful `Vesting` scaffold exposing cliff-gated claims, claimed-amount tracking, and optional revocation; next work is revocation accounting and output constraints.
 
 ### 1. KCC20 book — Pattern 4.1 dependency ✅ DONE 2026-05-23
 - Read introduction, overview, kcc20-contract, what-the-tests-demonstrate.

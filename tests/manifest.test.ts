@@ -21,5 +21,7 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[5]?.status).toBe('scaffolded');
     expect(patterns[6]?.id).toBe('core.streaming-payment');
     expect(patterns[6]?.status).toBe('scaffolded');
+    expect(patterns[7]?.id).toBe('core.vesting');
+    expect(patterns[7]?.status).toBe('scaffolded');
   });
 });
