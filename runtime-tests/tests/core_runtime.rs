@@ -1069,3 +1069,385 @@ fn vault_release_rejects_when_beneficiary_signature_swapped() {
 
     let _ = (owner_pk, pk3, beneficiary);
 }
+
+// ─── FreelancePayroll ───────────────────────────────────────────────────────
+//
+// Four entrypoints, all with the same `requireExactPayout` shape as
+// BilateralEscrow. We sample one positive per branch (worker via mutual
+// release, client via arbiter refund, worker via arbiter payout, client via
+// timeout reclaim) plus two negatives that pin the destination invariant.
+
+fn freelance_keys() -> (Keypair, Keypair, Keypair, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+    let client = random_keypair();
+    let worker = random_keypair();
+    let arbiter = random_keypair();
+    let client_pk = client.x_only_public_key().0.serialize().to_vec();
+    let worker_pk = worker.x_only_public_key().0.serialize().to_vec();
+    let arbiter_pk = arbiter.x_only_public_key().0.serialize().to_vec();
+    let arbiter_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&arbiter_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    (client, worker, arbiter, client_pk, worker_pk, arbiter_pk, arbiter_hash)
+}
+
+fn compile_freelance(client_pk: &[u8], worker_pk: &[u8], arbiter_hash: &[u8], timeout: i64) -> CompiledContract<'static> {
+    compile_contract_file(
+        "contracts/core/freelance-payroll.sil",
+        vec![
+            client_pk.to_vec().into(),
+            worker_pk.to_vec().into(),
+            arbiter_hash.to_vec().into(),
+            timeout.into(),
+        ],
+    )
+}
+
+#[test]
+fn freelance_standard_release_pays_worker_on_mutual_sign() {
+    let (client, worker, _arbiter, client_pk, worker_pk, _arbiter_pk, arbiter_hash) = freelance_keys();
+    let compiled = compile_freelance(&client_pk, &worker_pk, &arbiter_hash, 1_000);
+
+    let input_value = 6_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&worker_pk, input_value, 0, 0x80);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let client_sig = schnorr_signature(&mutable, 0, &client);
+    let worker_sig = schnorr_signature(&mutable, 0, &worker);
+    let sigscript = compiled
+        .build_sig_script(
+            "standard_release",
+            vec![
+                client_pk.clone().into(),
+                client_sig.into(),
+                worker_pk.clone().into(),
+                worker_sig.into(),
+            ],
+        )
+        .expect("standard_release sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "freelance standard_release runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn freelance_arbiter_refund_pays_client() {
+    let (client, _worker, arbiter, client_pk, worker_pk, arbiter_pk, arbiter_hash) = freelance_keys();
+    let compiled = compile_freelance(&client_pk, &worker_pk, &arbiter_hash, 1_000);
+
+    let input_value = 6_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&client_pk, input_value, 0, 0x81);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let arbiter_sig = schnorr_signature(&mutable, 0, &arbiter);
+    let client_sig = schnorr_signature(&mutable, 0, &client);
+    let sigscript = compiled
+        .build_sig_script(
+            "arbiter_refund",
+            vec![
+                arbiter_pk.into(),
+                arbiter_sig.into(),
+                client_pk.into(),
+                client_sig.into(),
+            ],
+        )
+        .expect("arbiter_refund sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "freelance arbiter_refund runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn freelance_arbiter_payout_pays_worker() {
+    let (_client, worker, arbiter, client_pk, worker_pk, arbiter_pk, arbiter_hash) = freelance_keys();
+    let compiled = compile_freelance(&client_pk, &worker_pk, &arbiter_hash, 1_000);
+
+    let input_value = 6_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&worker_pk, input_value, 0, 0x82);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let arbiter_sig = schnorr_signature(&mutable, 0, &arbiter);
+    let worker_sig = schnorr_signature(&mutable, 0, &worker);
+    let sigscript = compiled
+        .build_sig_script(
+            "arbiter_payout",
+            vec![
+                arbiter_pk.into(),
+                arbiter_sig.into(),
+                worker_pk.into(),
+                worker_sig.into(),
+            ],
+        )
+        .expect("arbiter_payout sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "freelance arbiter_payout runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn freelance_timeout_reclaim_pays_client_after_timeout() {
+    let (client, _worker, _arbiter, client_pk, worker_pk, _arbiter_pk, arbiter_hash) = freelance_keys();
+    let timeout = 500_i64;
+    let compiled = compile_freelance(&client_pk, &worker_pk, &arbiter_hash, timeout);
+
+    let input_value = 6_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&client_pk, input_value, timeout as u64, 0x83);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let client_sig = schnorr_signature(&mutable, 0, &client);
+    let sigscript = compiled
+        .build_sig_script(
+            "timeout_reclaim",
+            vec![client_pk.into(), client_sig.into()],
+        )
+        .expect("timeout_reclaim sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "freelance timeout_reclaim runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn freelance_standard_release_rejects_payout_to_client() {
+    // Mutual release sigs are good, but the contract pins the destination to
+    // the worker. Routing the output to the client must fail.
+    let (client, worker, _arbiter, client_pk, worker_pk, _arbiter_pk, arbiter_hash) = freelance_keys();
+    let compiled = compile_freelance(&client_pk, &worker_pk, &arbiter_hash, 1_000);
+
+    let input_value = 6_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&client_pk, input_value, 0, 0x84);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let client_sig = schnorr_signature(&mutable, 0, &client);
+    let worker_sig = schnorr_signature(&mutable, 0, &worker);
+    let sigscript = compiled
+        .build_sig_script(
+            "standard_release",
+            vec![
+                client_pk.into(),
+                client_sig.into(),
+                worker_pk.into(),
+                worker_sig.into(),
+            ],
+        )
+        .expect("standard_release sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("misrouted payout must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+#[test]
+fn freelance_arbiter_refund_rejects_with_only_arbiter_sig() {
+    // Arbiter signs correctly; the client slot is filled with an attacker key
+    // and signature. The require(client_pk == prev_state.client) gate
+    // catches it.
+    let (_client, _worker, arbiter, client_pk, worker_pk, arbiter_pk, arbiter_hash) = freelance_keys();
+    let compiled = compile_freelance(&client_pk, &worker_pk, &arbiter_hash, 1_000);
+
+    let input_value = 6_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&client_pk, input_value, 0, 0x85);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let attacker = random_keypair();
+    let attacker_pk = attacker.x_only_public_key().0.serialize().to_vec();
+    let arbiter_sig = schnorr_signature(&mutable, 0, &arbiter);
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+    let sigscript = compiled
+        .build_sig_script(
+            "arbiter_refund",
+            vec![
+                arbiter_pk.into(),
+                arbiter_sig.into(),
+                attacker_pk.into(),
+                attacker_sig.into(),
+            ],
+        )
+        .expect("arbiter_refund sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("attacker-as-client must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+// ─── Streaming + Vesting — gap surfaced 2026-05-23 ──────────────────────────
+//
+// Tests for streaming-payment.sil::cancel and vesting.sil::revoke were
+// drafted but cannot run: the full silverscript compile path rejects both
+// .sil sources with `Unsupported("return statement must be the last
+// statement")`. The withdraw/claim singletons in each contract use early
+// `return([...])` inside an `if` branch followed by a `return([])` after,
+// which the AST-level vitest tests accept but the compiler back-end
+// rejects.
+//
+// This is a real contract bug, not a harness limitation — those patterns
+// don't compile to runnable Kaspa script today, despite the existing
+// "*-compile.test.ts" suites passing (those use `silverc --ast-only`).
+// Fix is a contract-source refactor (single-return shape via a result
+// binding) and is tracked separately in NEXT_SESSION.md.
+
+#[test]
+#[ignore = "streaming-payment.sil does not survive full compile yet — see NEXT_SESSION.md"]
+fn streaming_cancel_accepts_sender_signature_skipped() {}
+
+#[test]
+#[ignore = "vesting.sil does not survive full compile yet — see NEXT_SESSION.md"]
+fn vesting_revoke_accepts_admin_when_revocable_skipped() {}
+
+// ─── Original Streaming/Vesting drafts kept as comments below for the
+// post-refactor session.
+
+#[allow(dead_code)]
+fn _streaming_cancel_accepts_sender_signature() {
+    let sender = random_keypair();
+    let recipient = random_keypair();
+    let sender_pk = sender.x_only_public_key().0.serialize().to_vec();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+    let compiled = compile_contract_file(
+        "contracts/core/streaming-payment.sil",
+        vec![
+            sender_pk.clone().into(),
+            recipient_pk.into(),
+            500_i64.into(),       // rate_per_claim
+            5_000_i64.into(),     // total_allowance
+            3_000_i64.into(),     // remaining_allowance
+            10_i64.into(),        // period
+            0_i64.into(),         // next_release_time
+        ],
+    );
+
+    let input_value = 4_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&sender_pk, input_value, 0, 0x90);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let sender_sig = schnorr_signature(&mutable, 0, &sender);
+    let sigscript = compiled
+        .build_sig_script("cancel", vec![sender_pk.into(), sender_sig.into()])
+        .expect("streaming cancel sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "streaming cancel runtime failed: {}", result.unwrap_err());
+}
+
+#[allow(dead_code)]
+fn _streaming_cancel_rejects_recipient_signature() {
+    // Recipient cannot cancel — only sender can.
+    let sender = random_keypair();
+    let recipient = random_keypair();
+    let sender_pk = sender.x_only_public_key().0.serialize().to_vec();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+    let compiled = compile_contract_file(
+        "contracts/core/streaming-payment.sil",
+        vec![
+            sender_pk.clone().into(),
+            recipient_pk.clone().into(),
+            500_i64.into(),
+            5_000_i64.into(),
+            3_000_i64.into(),
+            10_i64.into(),
+            0_i64.into(),
+        ],
+    );
+
+    let input_value = 4_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&recipient_pk, input_value, 0, 0x91);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let recipient_sig = schnorr_signature(&mutable, 0, &recipient);
+    let sigscript = compiled
+        .build_sig_script("cancel", vec![recipient_pk.into(), recipient_sig.into()])
+        .expect("streaming cancel sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("recipient cancel must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+
+    let _ = sender_pk;
+}
+
+// ─── Vesting.revoke (gated; see Streaming note above) ──────────────────────
+
+#[allow(dead_code)]
+fn _vesting_revoke_accepts_admin_when_revocable() {
+    let beneficiary = random_keypair();
+    let admin = random_keypair();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize().to_vec();
+    let admin_pk = admin.x_only_public_key().0.serialize().to_vec();
+    let compiled = compile_contract_file(
+        "contracts/core/vesting.sil",
+        vec![
+            beneficiary_pk.into(),
+            admin_pk.clone().into(),
+            10_000_i64.into(),  // total_allocation
+            2_000_i64.into(),   // claimed_amount
+            100_i64.into(),     // cliff_time
+            50_i64.into(),      // period
+            1_000_i64.into(),   // release_per_period
+            Expr::bool(true),   // revocable
+        ],
+    );
+
+    let input_value = 8_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&admin_pk, input_value, 0, 0xA0);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let admin_sig = schnorr_signature(&mutable, 0, &admin);
+    let sigscript = compiled
+        .build_sig_script("revoke", vec![admin_pk.into(), admin_sig.into()])
+        .expect("vesting revoke sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "vesting revoke runtime failed: {}", result.unwrap_err());
+}
+
+#[allow(dead_code)]
+fn _vesting_revoke_rejects_when_not_revocable() {
+    let beneficiary = random_keypair();
+    let admin = random_keypair();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize().to_vec();
+    let admin_pk = admin.x_only_public_key().0.serialize().to_vec();
+    let compiled = compile_contract_file(
+        "contracts/core/vesting.sil",
+        vec![
+            beneficiary_pk.into(),
+            admin_pk.clone().into(),
+            10_000_i64.into(),
+            2_000_i64.into(),
+            100_i64.into(),
+            50_i64.into(),
+            1_000_i64.into(),
+            Expr::bool(false),
+        ],
+    );
+
+    let input_value = 8_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&admin_pk, input_value, 0, 0xA1);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let admin_sig = schnorr_signature(&mutable, 0, &admin);
+    let sigscript = compiled
+        .build_sig_script("revoke", vec![admin_pk.into(), admin_sig.into()])
+        .expect("vesting revoke sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("non-revocable vesting must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
