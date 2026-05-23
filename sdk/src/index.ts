@@ -92,6 +92,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/vesting.sil',
     docPath: 'docs/patterns/core/vesting.md',
   },
+  {
+    id: 'core.dead-mans-switch',
+    title: "Dead Man's Switch",
+    phase: 'core',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Inheritance/recovery scaffold with owner keepalive, fallback claim, and beneficiary rotation.',
+    contractPath: 'contracts/core/dead-man-switch.sil',
+    docPath: 'docs/patterns/core/dead-man-switch.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {
