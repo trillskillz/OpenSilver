@@ -23,7 +23,8 @@ Paths:
 - `final_release` requires full completion and now constrains a single seller P2PK payout on output 0 with `input_value - minerFee` conservation.
 - Refund requires arbiter plus buyer participation and now constrains a single buyer P2PK payout on output 0 with `input_value - minerFee` conservation.
 - Timeout reclaim remains a buyer-protection path and now constrains the same buyer payout shape.
-- This scaffold still does not encode per-milestone payout accounting, partial withdrawals, or continuation-output value checks for the state transition path.
+- `approve_milestone` now constrains the authenticated continuation output count to one and preserves `input_value - minerFee` on that continuation output.
+- This scaffold still does not encode per-milestone payout accounting or partial withdrawals.
 
 ## KIP-20 Covenant ID handling
 

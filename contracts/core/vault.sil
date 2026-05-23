@@ -71,6 +71,15 @@ contract Vault(
         require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
     }
 
+    function requireExactContinuationValue() {
+        int auth_out_count = OpAuthOutputCount(this.activeInputIndex);
+        require(auth_out_count == 1);
+        int continuation_index = OpAuthOutputIdx(this.activeInputIndex, 0);
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        require(tx.outputs[continuation_index].value == amount);
+    }
+
     entrypoint function release(pubkey signer1, sig sig1, pubkey signer2, sig sig2, pubkey signer3, sig sig3, pubkey beneficiary_pk, sig beneficiary_sig) {
         State prev_state = {
             owner: owner,
@@ -106,6 +115,7 @@ contract Vault(
         require(distinctSigners(signer1, signer2, signer3));
         require(approvalCount(prev_state, signer1, sig1, signer2, sig2, signer3, sig3) >= prev_state.threshold);
         require(next_unlock_time >= prev_state.unlock_time);
+        requireExactContinuationValue();
         return({
             owner: prev_state.owner,
             pending_owner: prev_state.pending_owner,
@@ -139,6 +149,7 @@ contract Vault(
         requireValidConfiguration(next_threshold, next_pk1, next_pk2, next_pk3);
         require(distinctSigners(signer1, signer2, signer3));
         require(approvalCount(prev_state, signer1, sig1, signer2, sig2, signer3, sig3) >= prev_state.threshold);
+        requireExactContinuationValue();
         return({
             owner: prev_state.owner,
             pending_owner: prev_state.pending_owner,
@@ -157,6 +168,7 @@ contract Vault(
         require(next_owner != byte[32](0));
         require(next_owner != prev_state.owner);
         require(next_owner != prev_state.pending_owner);
+        requireExactContinuationValue();
         return({
             owner: prev_state.owner,
             pending_owner: next_owner,
@@ -173,6 +185,7 @@ contract Vault(
     function accept_owner_transfer(State prev_state, pubkey pending_owner_pk, sig pending_owner_sig) : (State) {
         require(prev_state.pending_owner != byte[32](0));
         requirePendingOwner(pending_owner_pk, pending_owner_sig, prev_state);
+        requireExactContinuationValue();
         return({
             owner: prev_state.pending_owner,
             pending_owner: byte[32](0),

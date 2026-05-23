@@ -17,7 +17,7 @@ A first enterprise-treasury-style composition of the earlier OpenSilver primitiv
 - `extend_lock` is quorum-gated and forward-only.
 - `reconfigure_signers` requires both owner approval and current-signer quorum.
 - owner transfer follows a two-step handoff.
-- Stateful admin paths still do not constrain continuation-output retained value/accounting.
+- Stateful admin paths now constrain the authenticated continuation output count to one and preserve `input_value - minerFee` on that continuation output.
 - There is no emergency path yet beyond signer reconfiguration and lock extension.
 
 ## KIP-20 Covenant ID handling

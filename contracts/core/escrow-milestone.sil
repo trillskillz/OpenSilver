@@ -44,6 +44,15 @@ contract MilestoneEscrow(
         require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
     }
 
+    function requireExactContinuationValue() {
+        int auth_out_count = OpAuthOutputCount(this.activeInputIndex);
+        require(auth_out_count == 1);
+        int continuation_index = OpAuthOutputIdx(this.activeInputIndex, 0);
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        require(tx.outputs[continuation_index].value == amount);
+    }
+
     #[covenant.singleton(mode = transition)]
     function approve_milestone(
         State prev_state,
@@ -56,6 +65,7 @@ contract MilestoneEscrow(
         requireArbiter(arbiter_pk, arbiter_sig, prev_state);
         requireSeller(seller_pk, seller_sig, prev_state);
         require(prev_state.completed_milestones < prev_state.total_milestones);
+        requireExactContinuationValue();
         return({
             buyer: prev_state.buyer,
             seller: prev_state.seller,

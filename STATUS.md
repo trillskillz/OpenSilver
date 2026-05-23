@@ -48,4 +48,5 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 1. Finish the remaining Phase 0/1 reading gaps (Sutton Medium post, Kaspero Labs Studio docs, vProgs / KIP-16 implementation notes).
 2. Flesh out the shared manifest/types surface so wallet, IDE, and MCP consumers all read the same pattern metadata.
 3. Expand Phase 3.1/3.2/3.3/3.4/3.5/3.6/3.7/3.8/3.9/3.10/3.11/3.12 with behavior-level tests, failure-mode notes, and continue adding output-shape/value-conservation checks where the patterns are currently scaffolds.
-- Hardened payout patterns (`Escrow bilateral`, `Escrow milestone`, `Atomic Swap HTLC`, `Freelance / Payroll`, `TimeLock`, `Vault release`, `Streaming Payment`, `Vesting`) with explicit output-0 destination and value-conservation checks where tractable.
+- Hardened payout patterns (`Escrow bilateral`, `Escrow milestone`, `Atomic Swap HTLC`, `Freelance / Payroll`, `TimeLock`, `Vault release`, `Streaming Payment`, `Vesting`) with explicit destination/value checks where tractable.
+- Hardened continuation paths for `Milestone Escrow.approve_milestone` and `Vault` admin transitions with authenticated-output count and retained-value checks.
