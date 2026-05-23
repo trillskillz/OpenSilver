@@ -20,6 +20,7 @@
     "docs:start": "npm run start --workspace @opensilver/docs-site",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:runtime": "cargo test --manifest-path runtime-tests/Cargo.toml",
     "typecheck": "tsc -b sdk cli mcp wizard integrations",
     "verify": "npm run typecheck && npm run test"
   },
