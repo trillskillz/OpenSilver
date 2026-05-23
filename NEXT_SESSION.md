@@ -16,11 +16,12 @@ Autonomous work picked up by the next agent run. Nothing here requires user inpu
 - Output: `docs/integrations/KASPACOM_MCP_BOUNDARY.md`. Key finding: their MCP is **L2 DeFi-specific** (Igra/Kasplex EVM, Solidity); ours is **L1 covenant-specific** (TN12/Toccata, SilverScript). Adjacent layers, no overlap, no federation required.
 - Three open questions raised for outreach (KASPACOM L1 covenant plans, wallet-as-integration-target, MCP hosting infra).
 
-### 3. KaspaCom wallet covenant templates
-- Locate the wallet's covenant-template code on GitHub (likely `kaspacom/kaspa-wallet` or similar).
-- Document which patterns the wallet already exposes to end users.
-- Output: extend `docs/integrations/KASPACOM_MCP_BOUNDARY.md` with a "Wallet templates" section.
-- Identify the smallest Phase 8.2 deliverable: a JSON manifest of OpenSilver patterns the wallet can import without code changes.
+### 3. KaspaCom wallet covenant templates ✅ DONE 2026-05-23
+- Surveyed all KASPACOM org repos via `gh search repos --owner KASPACOM`.
+- **Headline finding:** the KaspaCom web wallet does not currently embed L1 covenant templates. Phase 8.2 is greenfield, not extension.
+- Only L1 covenant code in the org is `KASPACOM/x402-KAS/contracts/silverscript/` (4 channel SIL files; v4-locked already audited in `KASBONDS_AUDIT.md`).
+- Output: `docs/integrations/KASPACOM_WALLET.md` with the full repo map, the x402 covenant analysis, and a proposed JSON pattern-manifest shape that doubles as the OpenSilver MCP `list_patterns` payload.
+- Raised a fourth outreach question for KASPACOM about wallet roadmap and manifest preference.
 
 ### 4. SilverScript Studio (Kaspero Labs)
 - Find the IDE source repo. Likely `kasperolabs/silverscript-studio` or similar.
