@@ -7,6 +7,8 @@ export interface PatternManifestEntry {
   stateful: boolean;
   status: 'planned' | 'scaffolded' | 'implemented' | 'audited';
   summary: string;
+  contractPath?: string;
+  docPath?: string;
 }
 
 export const patternManifest: PatternManifestEntry[] = [
@@ -15,8 +17,10 @@ export const patternManifest: PatternManifestEntry[] = [
     title: 'Ownable',
     phase: 'core',
     stateful: true,
-    status: 'planned',
+    status: 'scaffolded',
     summary: 'Single-owner covenant with explicit transfer semantics and KIP-20-safe state rotation.',
+    contractPath: 'contracts/core/ownable.sil',
+    docPath: 'docs/patterns/core/ownable.md',
   },
   {
     id: 'core.multisig',
@@ -25,6 +29,8 @@ export const patternManifest: PatternManifestEntry[] = [
     stateful: true,
     status: 'planned',
     summary: 'Configurable N-of-M signature policy intended to generalize the upstream 2-of-3 example.',
+    contractPath: 'contracts/core/multisig.sil',
+    docPath: 'docs/patterns/core/multisig.md',
   },
 ];
 
