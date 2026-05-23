@@ -25,5 +25,7 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[7]?.status).toBe('scaffolded');
     expect(patterns[8]?.id).toBe('core.dead-mans-switch');
     expect(patterns[8]?.status).toBe('scaffolded');
+    expect(patterns[9]?.id).toBe('core.social-recovery');
+    expect(patterns[9]?.status).toBe('scaffolded');
   });
 });

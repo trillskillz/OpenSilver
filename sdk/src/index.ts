@@ -102,6 +102,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/dead-man-switch.sil',
     docPath: 'docs/patterns/core/dead-man-switch.md',
   },
+  {
+    id: 'core.social-recovery',
+    title: 'Social Recovery',
+    phase: 'core',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Guardian-quorum recovery scaffold with delayed activation and owner cancellation.',
+    contractPath: 'contracts/core/social-recovery.sil',
+    docPath: 'docs/patterns/core/social-recovery.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {
