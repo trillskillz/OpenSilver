@@ -3,7 +3,7 @@
 ```
 PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
 PHASE_2_STATUS: IN_PROGRESS (initial monorepo scaffold landed)
-PATTERNS_COMPLETE: 0/22 (3 scaffolds started: Ownable, MultiSig, TimeLock)
+PATTERNS_COMPLETE: 0/22 (4 scaffolds started: Ownable, MultiSig, TimeLock, Vault)
 TESTNET_TXS: []
 DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
@@ -28,7 +28,8 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 - Landed initial Phase 2 scaffold: workspace directories, strict TypeScript config, Vitest, baseline CI, docs-site seed, and shared pattern-manifest surface.
 - Started Phase 3.1 Ownable with `contracts/core/ownable.sil`, `docs/patterns/core/ownable.md`, example/benchmark placeholders, and compiler-backed AST validation.
 - Started Phase 3.2 MultiSig with `contracts/core/multisig.sil`, `docs/patterns/core/multisig.md`, example placeholder, and compiler-backed AST validation.
-- Started Phase 3.3 TimeLock with `contracts/core/timelock.sil`, `docs/patterns/core/timelock.md`, example placeholder, and compiler-backed AST validation. Current limitation: the soft-cancel path still needs a strict pre-unlock guard that fits this compiler snapshot's `tx.time` parsing constraints.
+- Started Phase 3.3 TimeLock with `contracts/core/timelock.sil`, `docs/patterns/core/timelock.md`, example placeholder, and compiler-backed AST validation. Current limitation: the soft-cancel path still needs a strict pre-unlock guard that fits this compiler snapshot's `tx.time` parsing constraints. Logged as GitHub issue #1.
+- Started Phase 3.4 Vault with `contracts/core/vault.sil`, `docs/patterns/core/vault.md`, example placeholder, and compiler-backed AST validation.
 
 ## What's blocked on the user
 
@@ -38,4 +39,4 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 
 1. Finish the remaining Phase 0/1 reading gaps (Sutton Medium post, Kaspero Labs Studio docs, vProgs / KIP-16 implementation notes).
 2. Flesh out the shared manifest/types surface so wallet, IDE, and MCP consumers all read the same pattern metadata.
-3. Expand Phase 3.1/3.2/3.3 with behavior-level tests, failure-mode notes, and decide whether MultiSig should stay fixed at 3 signers for v1 before Vault composition begins.
+3. Expand Phase 3.1/3.2/3.3/3.4 with behavior-level tests, failure-mode notes, and tighten Vault output-shape constraints before treating it as more than a scaffold.

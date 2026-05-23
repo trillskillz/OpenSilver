@@ -13,5 +13,7 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[1]?.status).toBe('scaffolded');
     expect(patterns[2]?.id).toBe('core.timelock');
     expect(patterns[2]?.status).toBe('scaffolded');
+    expect(patterns[3]?.id).toBe('core.vault');
+    expect(patterns[3]?.status).toBe('scaffolded');
   });
 });

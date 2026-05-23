@@ -11,7 +11,8 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 - Remaining: expand the manifest schema, add contract-compilation hooks, and decide whether to vendor the compiler or reference the pinned upstream clone.
 - Phase 3.1 has started with an `Ownable` covenant scaffold; compiler validation is in place, and next work is behavior-level tests plus deciding whether the two-step handoff is the default variant.
 - Phase 3.2 has started with a `MultiSig` scaffold over three explicit signers with a reconfiguration path; next work is behavior validation and deciding how far to push toward true N-of-M in v1.
-- Phase 3.3 has started with a `TimeLock` scaffold supporting hard/soft modes plus a forward-only extension path; next work is behavior validation and deciding whether hashed-owner identifiers should replace raw pubkeys in state.
+- Phase 3.3 has started with a `TimeLock` scaffold supporting hard/soft modes plus a forward-only extension path; next work is behavior validation and deciding whether hashed-owner identifiers should replace raw pubkeys in state. The soft-cancel guard limitation is logged as GitHub issue #1.
+- Phase 3.4 has started with a `Vault` scaffold combining owner rotation, signer quorum, and timelocked release; next work is behavior validation and output-shape constraints.
 
 ### 1. KCC20 book — Pattern 4.1 dependency ✅ DONE 2026-05-23
 - Read introduction, overview, kcc20-contract, what-the-tests-demonstrate.

@@ -42,6 +42,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/timelock.sil',
     docPath: 'docs/patterns/core/timelock.md',
   },
+  {
+    id: 'core.vault',
+    title: 'Vault',
+    phase: 'core',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Enterprise-treasury scaffold combining owner rotation, signer quorum, and timelocked release.',
+    contractPath: 'contracts/core/vault.sil',
+    docPath: 'docs/patterns/core/vault.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {
