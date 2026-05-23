@@ -62,6 +62,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/escrow-bilateral.sil',
     docPath: 'docs/patterns/core/escrow-bilateral.md',
   },
+  {
+    id: 'core.escrow-milestone',
+    title: 'Escrow (milestone)',
+    phase: 'core',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Stateful milestone escrow scaffold with monotonic progress, final release, dispute refund, and timeout reclaim.',
+    contractPath: 'contracts/core/escrow-milestone.sil',
+    docPath: 'docs/patterns/core/escrow-milestone.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {
