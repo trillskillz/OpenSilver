@@ -1,0 +1,70 @@
+pragma silverscript ^0.1.0;
+
+contract MultiSig(int init_threshold, pubkey init_pk1, pubkey init_pk2, pubkey init_pk3) {
+    int threshold = init_threshold;
+    pubkey pk1 = init_pk1;
+    pubkey pk2 = init_pk2;
+    pubkey pk3 = init_pk3;
+
+    function requireValidConfiguration(int config_threshold, pubkey candidate1, pubkey candidate2, pubkey candidate3) {
+        require(config_threshold >= 1);
+        require(config_threshold <= 3);
+        require(candidate1 != candidate2);
+        require(candidate1 != candidate3);
+        require(candidate2 != candidate3);
+    }
+
+    function signerIsMember(pubkey candidate, State prev_state): bool {
+        return(candidate == prev_state.pk1 || candidate == prev_state.pk2 || candidate == prev_state.pk3);
+    }
+
+    function distinctSigners(pubkey signer1, pubkey signer2, pubkey signer3): bool {
+        return(signer1 != signer2 && signer1 != signer3 && signer2 != signer3);
+    }
+
+    function approvalCount(State prev_state, pubkey signer1, sig sig1, pubkey signer2, sig sig2, pubkey signer3, sig sig3): int {
+        int approvals = 0;
+
+        if (signerIsMember(signer1, prev_state) && checkSig(sig1, signer1)) {
+            approvals = approvals + 1;
+        }
+
+        if (signerIsMember(signer2, prev_state) && checkSig(sig2, signer2)) {
+            approvals = approvals + 1;
+        }
+
+        if (signerIsMember(signer3, prev_state) && checkSig(sig3, signer3)) {
+            approvals = approvals + 1;
+        }
+
+        return(approvals);
+    }
+
+    entrypoint function spend(pubkey signer1, sig sig1, pubkey signer2, sig sig2, pubkey signer3, sig sig3) {
+        State prev_state = { threshold: threshold, pk1: pk1, pk2: pk2, pk3: pk3 };
+        requireValidConfiguration(prev_state.threshold, prev_state.pk1, prev_state.pk2, prev_state.pk3);
+        require(distinctSigners(signer1, signer2, signer3));
+        require(approvalCount(prev_state, signer1, sig1, signer2, sig2, signer3, sig3) >= prev_state.threshold);
+    }
+
+    #[covenant.singleton(mode = transition)]
+    function reconfigure(
+        State prev_state,
+        int next_threshold,
+        pubkey next_pk1,
+        pubkey next_pk2,
+        pubkey next_pk3,
+        pubkey signer1,
+        sig sig1,
+        pubkey signer2,
+        sig sig2,
+        pubkey signer3,
+        sig sig3
+    ) : (State) {
+        requireValidConfiguration(prev_state.threshold, prev_state.pk1, prev_state.pk2, prev_state.pk3);
+        requireValidConfiguration(next_threshold, next_pk1, next_pk2, next_pk3);
+        require(distinctSigners(signer1, signer2, signer3));
+        require(approvalCount(prev_state, signer1, sig1, signer2, sig2, signer3, sig3) >= prev_state.threshold);
+        return({ threshold: next_threshold, pk1: next_pk1, pk2: next_pk2, pk3: next_pk3 });
+    }
+}
