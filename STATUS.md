@@ -26,7 +26,7 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 - Updated recon docs: `LANGUAGE_DEEP_DIVE.md`, `KIP_REFERENCE.md`, `PATTERN_MAPPING.md`.
 - Added `docs/ecosystem/AWESOME_KASPA_SCAN.md` to map covenant-relevant downstream projects and Phase 11.3 outreach targets.
 - Landed initial Phase 2 scaffold: workspace directories, strict TypeScript config, Vitest, baseline CI, docs-site seed, and shared pattern-manifest surface.
-- Started Phase 3.1 Ownable with `contracts/core/ownable.sil`, `docs/patterns/core/ownable.md`, and example/benchmark placeholders.
+- Started Phase 3.1 Ownable with `contracts/core/ownable.sil`, `docs/patterns/core/ownable.md`, example/benchmark placeholders, and compiler-backed AST validation.
 
 ## What's blocked on the user
 
@@ -36,4 +36,4 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 
 1. Finish the remaining Phase 0/1 reading gaps (Sutton Medium post, Kaspero Labs Studio docs, vProgs / KIP-16 implementation notes).
 2. Flesh out the shared manifest/types surface so wallet, IDE, and MCP consumers all read the same pattern metadata.
-3. Expand Phase 3.1 Ownable with compiler-aware tests, failure-mode notes, and a two-step handoff variant.
+3. Expand Phase 3.1 Ownable with behavior-level tests, failure-mode notes, and decide whether two-step handoff should be the default or one of two shipped variants.

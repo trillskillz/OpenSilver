@@ -1,17 +1,39 @@
 pragma silverscript ^0.1.0;
 
-contract Ownable(byte[32] init_owner) {
+contract Ownable(byte[32] init_owner, byte[32] init_pending_owner) {
     byte[32] owner = init_owner;
+    byte[32] pending_owner = init_pending_owner;
 
     function requireOwner(pubkey owner_pk, sig owner_sig) {
         require(blake2b(owner_pk) == owner);
         require(checkSig(owner_sig, owner_pk));
     }
 
+    function requirePendingOwner(pubkey pending_owner_pk, sig pending_owner_sig) {
+        require(blake2b(pending_owner_pk) == pending_owner);
+        require(checkSig(pending_owner_sig, pending_owner_pk));
+    }
+
     #[covenant.singleton(mode = transition)]
-    function transfer(State prev_state, byte[32] next_owner, pubkey owner_pk, sig owner_sig) : (State) {
+    function propose_transfer(State prev_state, byte[32] next_owner, pubkey owner_pk, sig owner_sig) : (State) {
         requireOwner(owner_pk, owner_sig);
+        require(next_owner != byte[32](0));
         require(next_owner != prev_state.owner);
-        return({ owner: next_owner });
+        require(next_owner != prev_state.pending_owner);
+        return({ owner: prev_state.owner, pending_owner: next_owner });
+    }
+
+    #[covenant.singleton(mode = transition)]
+    function accept_transfer(State prev_state, pubkey pending_owner_pk, sig pending_owner_sig) : (State) {
+        require(prev_state.pending_owner != byte[32](0));
+        requirePendingOwner(pending_owner_pk, pending_owner_sig);
+        return({ owner: prev_state.pending_owner, pending_owner: byte[32](0) });
+    }
+
+    #[covenant.singleton(mode = transition)]
+    function cancel_transfer(State prev_state, pubkey owner_pk, sig owner_sig) : (State) {
+        requireOwner(owner_pk, owner_sig);
+        require(prev_state.pending_owner != byte[32](0));
+        return({ owner: prev_state.owner, pending_owner: byte[32](0) });
     }
 }

@@ -55,4 +55,4 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 
 - Upstream: `cargo test -p silverscript-lang` runs **466 tests across 21 suites with 0 failures** at the pinned upstream commit. See `STATUS.md`.
 - Local scaffold: `npm run verify` passes (`tsc -b` + `vitest`), and `npm run docs:build` produces a static Docusaurus build.
-- Phase 3.1 has started with a first `contracts/core/ownable.sil` scaffold and matching pattern doc.
+- Phase 3.1 has started with a compiler-validated `contracts/core/ownable.sil` scaffold using a safer two-step transfer flow and matching pattern docs/tests.

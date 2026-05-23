@@ -8,5 +8,6 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[0]?.id).toBe('core.ownable');
     expect(patterns[0]?.status).toBe('scaffolded');
     expect(patterns[0]?.contractPath).toBe('contracts/core/ownable.sil');
+    expect(patterns[0]?.docPath).toBe('docs/patterns/core/ownable.md');
   });
 });
