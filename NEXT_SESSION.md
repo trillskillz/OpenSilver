@@ -41,10 +41,11 @@ Autonomous work picked up by the next agent run. Nothing here requires user inpu
 - Survey vProgs PRs (search "vProgs" in `kaspanet/rusty-kaspa` PRs).
 - Output: extend `references/kips/SUMMARY.md` with implementation-level notes for KIP-16 (Phase 5) and forward-compat callouts for vProgs.
 
-### 7. awesome-kaspa + Kaspa ecosystem index
-- Clone `https://github.com/aspectron/awesome-kaspa`.
-- Add a `docs/ecosystem/AWESOME_KASPA_SCAN.md` listing every covenant-relevant project with a one-line "relationship to OpenSilver" tag.
-- This becomes the source of truth for Phase 11.3 ecosystem outreach.
+### 7. awesome-kaspa + Kaspa ecosystem index ✅ DONE 2026-05-23
+- Cloned `Kasbah-commons/awesome-kaspa` (correction: repo owner is **not** `aspectron`).
+- Added `docs/ecosystem/AWESOME_KASPA_SCAN.md` listing covenant-relevant projects and their relationship to OpenSilver.
+- Key finding: the ecosystem is rich in wallets / L2 / merchant tools, but still lacks a canonical SilverScript covenant-pattern library category. This strengthens the OpenSilver thesis.
+- This doc is now the Phase 11.3 outreach seed list.
 
 ## User-gated items (do not attempt autonomously)
 
@@ -57,4 +58,4 @@ Autonomous work picked up by the next agent run. Nothing here requires user inpu
 
 ## Exit criteria (when this file empties)
 
-All items above complete → flip `STATUS.md` `PHASE_0_STATUS` to `READY_FOR_PHASE_2` and prompt the user for outreach status. Until at least one acknowledgement from Sutton OR Newman is recorded in `ECOSYSTEM_COORDINATION.md`, **do not begin Phase 2 scaffolding**.
+All items above complete → flip `STATUS.md` `PHASE_0_STATUS` to `READY_FOR_PHASE_2` and prompt the user for outreach status. Until at least one acknowledgement from Sutton OR Newman is recorded in `ECOSYSTEM_COORDINATION.md`, **do not begin Phase 2 scaffolding or pattern-code implementation**.

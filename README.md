@@ -18,7 +18,7 @@ See `PLAN.md` for the full implementation framework. See `ECOSYSTEM_COORDINATION
 
 Phase 0 — Ecosystem Coordination — IN PROGRESS
 
-Reading-list reconnaissance is largely complete and pushed; the remaining work in Phase 0 is **outreach to Michael Sutton and Ori Newman** (drafts in `ECOSYSTEM_COORDINATION.md`). One acknowledgement clears the gate to Phase 2.
+Reading-list reconnaissance is largely complete and pushed; the remaining work in Phase 0 is **outreach to Michael Sutton and Ori Newman** (drafts in `ECOSYSTEM_COORDINATION.md`) plus a final forward-compat pass on vProgs / KIP-16 implementation notes. One acknowledgement clears the gate to Phase 2.
 
 ## Map of this repo
 
@@ -34,6 +34,7 @@ Reading-list reconnaissance is largely complete and pushed; the remaining work i
 | `references/kips/kip-{0016,0017,0020,0021}.md` | Full text of each KIP, fetched from the open PR branches. |
 | `PATTERN_MAPPING.md` | Upstream examples × neighbouring ecosystems × OpenSilver V1 catalogue + DECL.md composition shapes. |
 | `KASBONDS_AUDIT.md` | Phase 1 Task 1.3 audit. Identifies promotable patterns. |
+| `docs/ecosystem/AWESOME_KASPA_SCAN.md` | Covenant-relevant scan of the broader Kaspa ecosystem from `awesome-kaspa`, with likely downstream integration targets. |
 | `upstream/silverscript/` | Pinned clone of `kaspanet/silverscript` at `2c46231` (gitignored). |
 | `upstream/kips/` | Pinned clone of `kaspanet/kips` (gitignored). |
 
