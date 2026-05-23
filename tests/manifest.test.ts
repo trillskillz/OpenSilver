@@ -15,5 +15,7 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[2]?.status).toBe('scaffolded');
     expect(patterns[3]?.id).toBe('core.vault');
     expect(patterns[3]?.status).toBe('scaffolded');
+    expect(patterns[4]?.id).toBe('core.escrow-bilateral');
+    expect(patterns[4]?.status).toBe('scaffolded');
   });
 });

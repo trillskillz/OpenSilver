@@ -13,6 +13,7 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 - Phase 3.2 has started with a `MultiSig` scaffold over three explicit signers with a reconfiguration path; next work is behavior validation and deciding how far to push toward true N-of-M in v1.
 - Phase 3.3 has started with a `TimeLock` scaffold supporting hard/soft modes plus a forward-only extension path; next work is behavior validation and deciding whether hashed-owner identifiers should replace raw pubkeys in state. The soft-cancel guard limitation is logged as GitHub issue #1.
 - Phase 3.4 has started with a `Vault` scaffold combining owner rotation, signer quorum, and timelocked release; next work is behavior validation and output-shape constraints.
+- Phase 3.5 has started with a bilateral `Escrow` scaffold exposing release/refund/timeout paths; next work is output-shape constraints and value-conservation checks.
 
 ### 1. KCC20 book — Pattern 4.1 dependency ✅ DONE 2026-05-23
 - Read introduction, overview, kcc20-contract, what-the-tests-demonstrate.

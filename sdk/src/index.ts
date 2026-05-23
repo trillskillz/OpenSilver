@@ -52,6 +52,16 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/vault.sil',
     docPath: 'docs/patterns/core/vault.md',
   },
+  {
+    id: 'core.escrow-bilateral',
+    title: 'Escrow (bilateral)',
+    phase: 'core',
+    stateful: false,
+    status: 'scaffolded',
+    summary: 'Three-party bilateral escrow scaffold with arbiter-approved release/refund and buyer timeout reclaim.',
+    contractPath: 'contracts/core/escrow-bilateral.sil',
+    docPath: 'docs/patterns/core/escrow-bilateral.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {
