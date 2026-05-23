@@ -662,3 +662,240 @@ fn multisig_spend_rejects_below_threshold() {
     // Silence unused-binding lint for kp3/pk3 (they only seed the config).
     let _ = (kp3, pk3);
 }
+
+// ─── TimeLock additional paths ──────────────────────────────────────────────
+
+#[test]
+fn timelock_claim_rejects_before_unlock_time() {
+    // Same shape as the accepts-test, but the tx locktime sits below the
+    // contract's unlock_time, so `require(tx.time >= unlock_time)` fails.
+    let owner = random_keypair();
+    let beneficiary = random_keypair();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
+    let unlock_time = 50_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/timelock.sil",
+        vec![
+            owner_pk.to_vec().into(),
+            beneficiary_pk.to_vec().into(),
+            unlock_time.into(),
+            Expr::bool(true),
+        ],
+    );
+
+    let input_value = 2_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&beneficiary_pk, input_value, 10, 0x40);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let beneficiary_sig = schnorr_signature(&mutable, 0, &beneficiary);
+    let sigscript = compiled
+        .build_sig_script("claim", vec![beneficiary_pk.to_vec().into(), beneficiary_sig.into()])
+        .expect("claim sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("early claim must fail");
+    assert!(
+        matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse | TxScriptError::UnsatisfiedLockTime(_)),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[test]
+fn timelock_cancel_accepts_owner_when_soft_cancel_enabled() {
+    let owner = random_keypair();
+    let beneficiary = random_keypair();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
+    let unlock_time = 5_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/timelock.sil",
+        vec![
+            owner_pk.to_vec().into(),
+            beneficiary_pk.to_vec().into(),
+            unlock_time.into(),
+            Expr::bool(true),
+        ],
+    );
+
+    let input_value = 2_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&owner_pk, input_value, 0, 0x41);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let owner_sig = schnorr_signature(&mutable, 0, &owner);
+    let sigscript = compiled
+        .build_sig_script("cancel", vec![owner_pk.to_vec().into(), owner_sig.into()])
+        .expect("cancel sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "timelock cancel runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn timelock_cancel_rejects_when_soft_cancel_disabled() {
+    // soft_cancel_enabled = false locks the owner out of the cancel branch.
+    let owner = random_keypair();
+    let beneficiary = random_keypair();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
+    let unlock_time = 5_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/timelock.sil",
+        vec![
+            owner_pk.to_vec().into(),
+            beneficiary_pk.to_vec().into(),
+            unlock_time.into(),
+            Expr::bool(false),
+        ],
+    );
+
+    let input_value = 2_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&owner_pk, input_value, 0, 0x42);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let owner_sig = schnorr_signature(&mutable, 0, &owner);
+    let sigscript = compiled
+        .build_sig_script("cancel", vec![owner_pk.to_vec().into(), owner_sig.into()])
+        .expect("cancel sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("hard-timelock cancel must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+// ─── HTLC refund (timeout path) ─────────────────────────────────────────────
+
+#[test]
+fn htlc_refund_accepts_after_timeout() {
+    let recipient = random_keypair();
+    let refunder = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize();
+    let refunder_pk = refunder.x_only_public_key().0.serialize();
+    let secret_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(b"unused-for-refund-path")
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout = 100_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/atomic-swap-htlc.sil",
+        vec![
+            recipient_pk.to_vec().into(),
+            refunder_pk.to_vec().into(),
+            secret_hash.into(),
+            timeout.into(),
+        ],
+    );
+
+    let input_value = 5_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&refunder_pk, input_value, timeout as u64, 0x50);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let refunder_sig = schnorr_signature(&mutable, 0, &refunder);
+    let sigscript = compiled
+        .build_sig_script("refund", vec![refunder_pk.to_vec().into(), refunder_sig.into()])
+        .expect("htlc refund sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "htlc refund runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn htlc_refund_rejects_before_timeout() {
+    let recipient = random_keypair();
+    let refunder = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize();
+    let refunder_pk = refunder.x_only_public_key().0.serialize();
+    let secret_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(b"unused-for-refund-path")
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout = 100_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/atomic-swap-htlc.sil",
+        vec![
+            recipient_pk.to_vec().into(),
+            refunder_pk.to_vec().into(),
+            secret_hash.into(),
+            timeout.into(),
+        ],
+    );
+
+    let input_value = 5_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&refunder_pk, input_value, 50, 0x51);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let refunder_sig = schnorr_signature(&mutable, 0, &refunder);
+    let sigscript = compiled
+        .build_sig_script("refund", vec![refunder_pk.to_vec().into(), refunder_sig.into()])
+        .expect("htlc refund sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("early refund must fail");
+    assert!(
+        matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse | TxScriptError::UnsatisfiedLockTime(_)),
+        "unexpected error: {err:?}"
+    );
+}
+
+// ─── BilateralEscrow timeout reclaim ────────────────────────────────────────
+
+#[test]
+fn bilateral_timeout_reclaim_accepts_after_timeout() {
+    let buyer = random_keypair();
+    let seller = random_keypair();
+    let arbiter = random_keypair();
+    let buyer_pk = buyer.x_only_public_key().0.serialize();
+    let seller_pk = seller.x_only_public_key().0.serialize();
+    let arbiter_pk = arbiter.x_only_public_key().0.serialize();
+    let arbiter_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&arbiter_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout = 200_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/escrow-bilateral.sil",
+        vec![
+            buyer_pk.to_vec().into(),
+            seller_pk.to_vec().into(),
+            arbiter_hash.into(),
+            timeout.into(),
+        ],
+    );
+
+    let input_value = 4_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&buyer_pk, input_value, timeout as u64, 0x60);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let buyer_sig = schnorr_signature(&mutable, 0, &buyer);
+    let sigscript = compiled
+        .build_sig_script(
+            "timeout_reclaim",
+            vec![buyer_pk.to_vec().into(), buyer_sig.into()],
+        )
+        .expect("timeout_reclaim sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "bilateral timeout_reclaim runtime failed: {}", result.unwrap_err());
+
+    // Use seller_pk to silence unused-binding lint — it's only here to seed
+    // the contract config alongside buyer/arbiter.
+    let _ = seller_pk;
+}
