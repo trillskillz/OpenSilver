@@ -4,8 +4,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-describe('TimeLock contract scaffold', () => {
-  it('parses with silverc and exposes claim/cancel/extend_lock entrypoints in the AST', () => {
+describe('TimeLock contract hardening', () => {
+  it('parses with silverc and preserves payout constraints in the AST', () => {
     const repoRoot = process.cwd();
     const binary = join(repoRoot, 'upstream/silverscript/target/debug/silverc');
     const source = join(repoRoot, 'contracts/core/timelock.sil');
@@ -20,6 +20,9 @@ describe('TimeLock contract scaffold', () => {
       expect(printed).toContain('cancel');
       expect(printed).toContain('extend_lock');
       expect(printed).toContain('soft_cancel_enabled');
+      expect(printed).toContain('requireExactPayout');
+      expect(printed).toContain('ScriptPubKeyP2PK');
+      expect(printed).toContain('tx.outputs[0].value == amount');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

@@ -4,8 +4,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-describe('Milestone Escrow contract scaffold', () => {
-  it('parses with silverc and exposes milestone progression/release/refund entrypoints in the AST', () => {
+describe('Milestone Escrow contract hardening', () => {
+  it('parses with silverc and preserves payout plus continuation constraints in the AST', () => {
     const repoRoot = process.cwd();
     const binary = join(repoRoot, 'upstream/silverscript/target/debug/silverc');
     const source = join(repoRoot, 'contracts/core/escrow-milestone.sil');
@@ -20,6 +20,10 @@ describe('Milestone Escrow contract scaffold', () => {
       expect(printed).toContain('final_release');
       expect(printed).toContain('dispute_refund');
       expect(printed).toContain('completed_milestones');
+      expect(printed).toContain('requireExactPayout');
+      expect(printed).toContain('requireExactContinuationValue');
+      expect(printed).toContain('OpAuthOutputCount');
+      expect(printed).toContain('OpAuthOutputIdx');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

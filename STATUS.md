@@ -50,3 +50,4 @@ NEXT_PHASE: 2 (continue scaffold, then move to first core pattern)
 3. Expand Phase 3.1/3.2/3.3/3.4/3.5/3.6/3.7/3.8/3.9/3.10/3.11/3.12 with behavior-level tests, failure-mode notes, and continue adding output-shape/value-conservation checks where the patterns are currently scaffolds.
 - Hardened payout patterns (`Escrow bilateral`, `Escrow milestone`, `Atomic Swap HTLC`, `Freelance / Payroll`, `TimeLock`, `Vault release`, `Streaming Payment`, `Vesting`) with explicit destination/value checks where tractable.
 - Hardened continuation paths for `Milestone Escrow.approve_milestone` and `Vault` admin transitions with authenticated-output count and retained-value checks.
+- Strengthened compile/AST tests to assert the presence of payout and continuation hardening structures, not just entrypoint names.

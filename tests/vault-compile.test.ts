@@ -4,8 +4,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-describe('Vault contract scaffold', () => {
-  it('parses with silverc and exposes release/admin transition entrypoints in the AST', () => {
+describe('Vault contract hardening', () => {
+  it('parses with silverc and preserves payout plus continuation constraints in the AST', () => {
     const repoRoot = process.cwd();
     const binary = join(repoRoot, 'upstream/silverscript/target/debug/silverc');
     const source = join(repoRoot, 'contracts/core/vault.sil');
@@ -21,6 +21,10 @@ describe('Vault contract scaffold', () => {
       expect(printed).toContain('reconfigure_signers');
       expect(printed).toContain('propose_owner_transfer');
       expect(printed).toContain('accept_owner_transfer');
+      expect(printed).toContain('requireExactPayout');
+      expect(printed).toContain('requireExactContinuationValue');
+      expect(printed).toContain('OpAuthOutputCount');
+      expect(printed).toContain('OpAuthOutputIdx');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
