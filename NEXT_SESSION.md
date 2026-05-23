@@ -30,11 +30,11 @@ Autonomous work picked up by the next agent run. Nothing here requires user inpu
 - Output: `docs/integrations/STUDIO_LIBRARY_FORMAT.md` with a proposed three-consumer JSON manifest (wallet + MCP + IDE share one source of truth).
 - Added a fifth outreach question for Kaspero Labs and one for Manyfest.
 
-### 5. Neighbouring-ecosystem stdlibs (fill in `PATTERN_MAPPING.md`)
-- **OpenZeppelin Contracts** (Solidity): map every relevant pattern. Focus on `access`, `token/ERC20`, `governance`, `finance/VestingWallet`, `security/Pausable`.
-- **Aiken stdlib** (Cardano): the UTXO model is closest to Kaspa's. Map patterns to Aiken's `aiken/transaction`, `aiken/crypto`, `aiken/list`.
-- **CashScript stdlib** — direct comparison since SilverScript is CashScript-inspired. Surface every pattern + idiom from `cashscript/cashscript`.
-- Output: replace the "implied" cells in `PATTERN_MAPPING.md` with concrete file/path references.
+### 5. Neighbouring-ecosystem stdlibs (fill in `PATTERN_MAPPING.md`) ✅ DONE 2026-05-23
+- Cloned `cashscript/cashscript` and `aiken-lang/stdlib`.
+- **Correction surfaced:** neither CashScript nor Aiken ships a *standardised patterns library* (à la OpenZeppelin). CashScript = language + 5 curated examples; Aiken stdlib = low-level building blocks; the patterns-library equivalent for Cardano is third-party (Anastasia Labs Design Patterns).
+- Replaced "implied" cells in `PATTERN_MAPPING.md` with concrete paths into the upstream clones (OZ file names, CashScript `.cash` examples, Aiken `.ak` modules).
+- **Quantitative finding:** 10 of 22 V1 patterns have prior art (5 base OZ + 5 KRC-20 derivations); 5 have a CashScript example; 12 are genuine net-new for L1 UTXO covenant systems. This is the quantitative basis for the OpenSilver thesis.
 
 ### 6. Saefstroem Groth16 PR + Hans Moog vProgs PRs
 - Read `kaspanet/rusty-kaspa#775` (KIP-16 reference impl) — opcode dispatch, precompile structure, error modes.
