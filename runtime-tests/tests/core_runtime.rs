@@ -325,3 +325,340 @@ fn milestone_approve_rejects_wrong_continuation_value() {
     let err = execute_covenant_input(mutable.tx, utxo).expect_err("wrong continuation value should fail");
     assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
 }
+
+// ─── Helpers shared by the terminal-payout patterns ─────────────────────────
+
+/// Build a single-output Transaction paying P2PK(dest) with the input value
+/// minus the canonical 1000-sompi miner fee enforced by `requireExactPayout`.
+fn build_terminal_payout_tx(
+    dest_pk: &[u8],
+    input_value: u64,
+    locktime: u64,
+    outpoint_marker: u8,
+) -> (Transaction, u64) {
+    let miner_fee = 1000u64;
+    let payout = input_value - miner_fee;
+    let output0 = TransactionOutput {
+        value: payout,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(dest_pk).into()),
+        covenant: None,
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([outpoint_marker; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], locktime, Default::default(), 0, vec![]);
+    (tx, payout)
+}
+
+// ─── AtomicSwapHTLC ─────────────────────────────────────────────────────────
+
+#[test]
+fn htlc_claim_accepts_correct_secret_and_payout() {
+    let recipient = random_keypair();
+    let refunder = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize();
+    let refunder_pk = refunder.x_only_public_key().0.serialize();
+    let secret = b"open-sesame-32-byte-secret-value".to_vec();
+    let secret_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&secret)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout = 100_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/atomic-swap-htlc.sil",
+        vec![
+            recipient_pk.to_vec().into(),
+            refunder_pk.to_vec().into(),
+            secret_hash.clone().into(),
+            timeout.into(),
+        ],
+    );
+
+    let input_value = 5_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&recipient_pk, input_value, 0, 0x10);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let recipient_sig = schnorr_signature(&mutable, 0, &recipient);
+    let sigscript = compiled
+        .build_sig_script(
+            "claim",
+            vec![recipient_pk.to_vec().into(), recipient_sig.into(), secret.into()],
+        )
+        .expect("htlc claim sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "htlc claim runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn htlc_claim_rejects_wrong_secret() {
+    let recipient = random_keypair();
+    let refunder = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize();
+    let refunder_pk = refunder.x_only_public_key().0.serialize();
+    let real_secret = b"open-sesame-32-byte-secret-value".to_vec();
+    let secret_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&real_secret)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let wrong_secret = b"WRONG-32-byte-preimage-attempt-x".to_vec();
+    let timeout = 100_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/atomic-swap-htlc.sil",
+        vec![
+            recipient_pk.to_vec().into(),
+            refunder_pk.to_vec().into(),
+            secret_hash.clone().into(),
+            timeout.into(),
+        ],
+    );
+
+    let input_value = 5_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&recipient_pk, input_value, 0, 0x11);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let recipient_sig = schnorr_signature(&mutable, 0, &recipient);
+    let sigscript = compiled
+        .build_sig_script(
+            "claim",
+            vec![recipient_pk.to_vec().into(), recipient_sig.into(), wrong_secret.into()],
+        )
+        .expect("htlc claim sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("wrong preimage should fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+// ─── BilateralEscrow ────────────────────────────────────────────────────────
+
+#[test]
+fn bilateral_release_to_seller_accepts_arbiter_and_seller() {
+    let buyer = random_keypair();
+    let seller = random_keypair();
+    let arbiter = random_keypair();
+    let buyer_pk = buyer.x_only_public_key().0.serialize();
+    let seller_pk = seller.x_only_public_key().0.serialize();
+    let arbiter_pk = arbiter.x_only_public_key().0.serialize();
+    let arbiter_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&arbiter_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout = 1_000_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/escrow-bilateral.sil",
+        vec![
+            buyer_pk.to_vec().into(),
+            seller_pk.to_vec().into(),
+            arbiter_hash.clone().into(),
+            timeout.into(),
+        ],
+    );
+
+    let input_value = 4_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&seller_pk, input_value, 0, 0x20);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let arbiter_sig = schnorr_signature(&mutable, 0, &arbiter);
+    let seller_sig = schnorr_signature(&mutable, 0, &seller);
+    let sigscript = compiled
+        .build_sig_script(
+            "release_to_seller",
+            vec![
+                arbiter_pk.to_vec().into(),
+                arbiter_sig.into(),
+                seller_pk.to_vec().into(),
+                seller_sig.into(),
+            ],
+        )
+        .expect("release sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "bilateral release runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn bilateral_release_rejects_payout_to_buyer() {
+    // Same arbiter+seller signatures but routed to the buyer — the contract
+    // pins the destination to the seller, so this must fail.
+    let buyer = random_keypair();
+    let seller = random_keypair();
+    let arbiter = random_keypair();
+    let buyer_pk = buyer.x_only_public_key().0.serialize();
+    let seller_pk = seller.x_only_public_key().0.serialize();
+    let arbiter_pk = arbiter.x_only_public_key().0.serialize();
+    let arbiter_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&arbiter_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout = 1_000_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/escrow-bilateral.sil",
+        vec![
+            buyer_pk.to_vec().into(),
+            seller_pk.to_vec().into(),
+            arbiter_hash.clone().into(),
+            timeout.into(),
+        ],
+    );
+
+    let input_value = 4_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&buyer_pk, input_value, 0, 0x21);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let arbiter_sig = schnorr_signature(&mutable, 0, &arbiter);
+    let seller_sig = schnorr_signature(&mutable, 0, &seller);
+    let sigscript = compiled
+        .build_sig_script(
+            "release_to_seller",
+            vec![
+                arbiter_pk.to_vec().into(),
+                arbiter_sig.into(),
+                seller_pk.to_vec().into(),
+                seller_sig.into(),
+            ],
+        )
+        .expect("release sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("payout to buyer should fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+// ─── MultiSig ───────────────────────────────────────────────────────────────
+
+#[test]
+fn multisig_spend_accepts_threshold_signatures() {
+    let kp1 = random_keypair();
+    let kp2 = random_keypair();
+    let kp3 = random_keypair();
+    let pk1 = kp1.x_only_public_key().0.serialize();
+    let pk2 = kp2.x_only_public_key().0.serialize();
+    let pk3 = kp3.x_only_public_key().0.serialize();
+    let threshold = 2_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/multisig.sil",
+        vec![
+            threshold.into(),
+            pk1.to_vec().into(),
+            pk2.to_vec().into(),
+            pk3.to_vec().into(),
+        ],
+    );
+
+    // No payout constraint on the spend entrypoint — give the tx a single
+    // dummy output (the contract does not assert anything about its shape).
+    let input_value = 2_000u64;
+    let dummy_dest = random_keypair().x_only_public_key().0.serialize();
+    let (tx, _payout) = build_terminal_payout_tx(&dummy_dest, input_value, 0, 0x30);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    // Sign with kp1 and kp2 (threshold = 2). For the third slot, supply the
+    // third member's key alongside kp3's signature — the contract counts
+    // approvals, so two valid + one valid still passes; we use a non-member
+    // attacker key + a junk signature to exercise the "two valid + one
+    // failing membership" path instead, since that is the more interesting
+    // assertion.
+    let non_member = random_keypair();
+    let non_member_pk = non_member.x_only_public_key().0.serialize();
+    let sig1 = schnorr_signature(&mutable, 0, &kp1);
+    let sig2 = schnorr_signature(&mutable, 0, &kp2);
+    let attacker_sig = schnorr_signature(&mutable, 0, &non_member);
+    let sigscript = compiled
+        .build_sig_script(
+            "spend",
+            vec![
+                pk1.to_vec().into(),
+                sig1.into(),
+                pk2.to_vec().into(),
+                sig2.into(),
+                non_member_pk.to_vec().into(),
+                attacker_sig.into(),
+            ],
+        )
+        .expect("multisig spend sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "multisig 2-of-3 runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn multisig_spend_rejects_below_threshold() {
+    let kp1 = random_keypair();
+    let kp2 = random_keypair();
+    let kp3 = random_keypair();
+    let pk1 = kp1.x_only_public_key().0.serialize();
+    let pk2 = kp2.x_only_public_key().0.serialize();
+    let pk3 = kp3.x_only_public_key().0.serialize();
+    let threshold = 2_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/multisig.sil",
+        vec![
+            threshold.into(),
+            pk1.to_vec().into(),
+            pk2.to_vec().into(),
+            pk3.to_vec().into(),
+        ],
+    );
+
+    let input_value = 2_000u64;
+    let dummy_dest = random_keypair().x_only_public_key().0.serialize();
+    let (tx, _payout) = build_terminal_payout_tx(&dummy_dest, input_value, 0, 0x31);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    // Only kp1 produces a valid signature; the other two are non-members.
+    let non_member_a = random_keypair();
+    let non_member_b = random_keypair();
+    let nm_a_pk = non_member_a.x_only_public_key().0.serialize();
+    let nm_b_pk = non_member_b.x_only_public_key().0.serialize();
+    let sig1 = schnorr_signature(&mutable, 0, &kp1);
+    let sig_a = schnorr_signature(&mutable, 0, &non_member_a);
+    let sig_b = schnorr_signature(&mutable, 0, &non_member_b);
+    let sigscript = compiled
+        .build_sig_script(
+            "spend",
+            vec![
+                pk1.to_vec().into(),
+                sig1.into(),
+                nm_a_pk.to_vec().into(),
+                sig_a.into(),
+                nm_b_pk.to_vec().into(),
+                sig_b.into(),
+            ],
+        )
+        .expect("multisig spend sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("1-of-3 must fail at threshold 2");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+
+    // Silence unused-binding lint for kp3/pk3 (they only seed the config).
+    let _ = (kp3, pk3);
+}
