@@ -10,7 +10,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 19/19 vitest files (25/25 tests) + 53/53 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 19/19 vitest files (26/26 tests) + 53/53 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -123,7 +123,8 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
   - concrete transaction-shape plans for controller genesis, asset genesis, and mint flows
   - compile/deploy spec bundles for controller pre-init, asset genesis, initialized controller state, and mint continuations against the pinned `upstream/silverscript/target/debug/silverc`
   - a real TS-side `silverc` wrapper (`buildSilvercCommandPlan` + `runSilvercCompileSpec`) that writes ctor-args JSON, executes the compiler, and parses the emitted JSON artifact
-- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is expanding the new TS-side compiler wrapper into a fuller deployer/integration surface.
+  - deploy-ready compiled flow assembly (`buildKcc20DeployFlow`) that combines lifecycle planning, transaction shapes, compile specs, and wrapper-produced artifacts into one object
+- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is expanding the new deploy-flow layer into fuller broadcaster/deployer integration.
 
 ## Phase 4 — KCC20 token patterns (current)
 

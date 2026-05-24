@@ -389,6 +389,23 @@ export interface Kcc20MintCompileBundle {
   nextController: SilvercCompileSpec;
 }
 
+export interface Kcc20CompiledStage<TArtifact = unknown> {
+  transaction: Kcc20TransactionPlan;
+  compileSpec: SilvercCompileSpec;
+  compiled: SilvercRunResult<TArtifact>;
+}
+
+export interface Kcc20DeployFlow<TArtifact = unknown> {
+  lifecycle: Kcc20LifecyclePlan;
+  transactions: Kcc20LifecycleTransactionPlans;
+  deploymentBundle: Kcc20DeploymentBundle;
+  stages: {
+    controllerGenesis: Kcc20CompiledStage<TArtifact>;
+    assetGenesis: Kcc20CompiledStage<TArtifact>;
+    controllerInitialized: Kcc20CompiledStage<TArtifact>;
+  };
+}
+
 const KCC20_ASSET_CONTRACT_PATH = 'contracts/tokens/kcc20.sil';
 const KCC20_ASSET_DOC_PATH = 'docs/patterns/tokens/kcc20.md';
 const DEFAULT_SILVERC_BINARY = 'upstream/silverscript/target/debug/silverc';
@@ -904,6 +921,73 @@ export function buildKcc20MintCompileBundle(
     continuedAsset: buildSilvercCompileSpec(paths.asset, continuedAssetArgs, params),
     recipientAsset: buildSilvercCompileSpec(paths.asset, recipientAssetArgs, params),
     nextController: buildSilvercCompileSpec(paths.controller, nextControllerArgs, params),
+  };
+}
+
+export function compileKcc20DeploymentBundle<TArtifact = unknown>(
+  bundle: Kcc20DeploymentBundle,
+  options: {
+    repoRoot?: string;
+    keepTempDir?: boolean;
+  } = {},
+): {
+  controllerPreInit: SilvercRunResult<TArtifact>;
+  assetGenesis: SilvercRunResult<TArtifact>;
+  controllerInitialized: SilvercRunResult<TArtifact>;
+} {
+  return {
+    controllerPreInit: runSilvercCompileSpec<TArtifact>(bundle.controllerPreInit, options),
+    assetGenesis: runSilvercCompileSpec<TArtifact>(bundle.assetGenesis, options),
+    controllerInitialized: runSilvercCompileSpec<TArtifact>(bundle.controllerInitialized, options),
+  };
+}
+
+export function buildKcc20DeployFlow<TArtifact = unknown>(
+  controller: Kcc20ControllerConfig,
+  template: Kcc20TemplateParts,
+  options: {
+    repoRoot?: string;
+    keepTempDir?: boolean;
+    placeholderKcc20Covid?: string;
+    maxCovenantInputs?: number;
+    maxCovenantOutputs?: number;
+    silvercBinary?: string;
+    mode?: 'ast-only' | 'compile';
+    controllerCovenantIdPlaceholder?: string;
+    assetCovenantIdPlaceholder?: string;
+  } = {},
+): Kcc20DeployFlow<TArtifact> {
+  const lifecycle = buildKcc20LifecyclePlan(controller, template, options);
+  const transactions = buildKcc20LifecycleTransactionPlans(controller, template, options);
+  const deploymentBundle = buildKcc20DeploymentBundle(controller, template, options);
+  const compiled = compileKcc20DeploymentBundle<TArtifact>(deploymentBundle, options);
+
+  return {
+    lifecycle,
+    transactions,
+    deploymentBundle,
+    stages: {
+      controllerGenesis: {
+        transaction: transactions.controllerGenesis,
+        compileSpec: deploymentBundle.controllerPreInit,
+        compiled: compiled.controllerPreInit,
+      },
+      assetGenesis: {
+        transaction: transactions.assetGenesis,
+        compileSpec: deploymentBundle.assetGenesis,
+        compiled: compiled.assetGenesis,
+      },
+      controllerInitialized: {
+        transaction: {
+          ...transactions.assetGenesis,
+          kind: 'asset-genesis',
+          entrypoint: 'init',
+          notes: [...transactions.assetGenesis.notes, 'Compiled initialized-controller artifact for the post-init output.'],
+        },
+        compileSpec: deploymentBundle.controllerInitialized,
+        compiled: compiled.controllerInitialized,
+      },
+    },
   };
 }
 

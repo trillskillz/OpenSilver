@@ -4,6 +4,7 @@ import {
   buildKcc20AssetConstructorArgs,
   buildKcc20ControllerConstructorArgs,
   buildKcc20ControllerState,
+  buildKcc20DeployFlow,
   buildKcc20DeploymentBundle,
   buildKcc20LifecyclePlan,
   buildKcc20LifecycleTransactionPlans,
@@ -284,5 +285,28 @@ describe('kcc20 sdk helpers', () => {
     const printed = JSON.stringify(result.artifact);
     expect(printed).toContain('IDENTIFIER_COVENANT_ID');
     expect(printed).toContain('checkAmounts');
+  });
+
+  it('assembles a deploy-ready flow with compiled stage artifacts', () => {
+    const repoRoot = process.cwd();
+    const flow = buildKcc20DeployFlow<Record<string, unknown>>(
+      {
+        kind: 'pausable',
+        admin: '11'.repeat(32),
+      },
+      template,
+      { repoRoot, mode: 'ast-only' },
+    );
+
+    expect(flow.lifecycle.controllerKind).toBe('pausable');
+    expect(flow.transactions.controllerGenesis.kind).toBe('controller-genesis');
+    expect(flow.stages.controllerGenesis.compileSpec.contractPath).toBe('contracts/tokens/kcc20-pausable.sil');
+    expect(flow.stages.assetGenesis.compileSpec.contractPath).toBe('contracts/tokens/kcc20.sil');
+    expect(flow.stages.controllerInitialized.transaction.entrypoint).toBe('init');
+
+    const controllerPrinted = JSON.stringify(flow.stages.controllerGenesis.compiled.artifact);
+    const assetPrinted = JSON.stringify(flow.stages.assetGenesis.compiled.artifact);
+    expect(controllerPrinted).toContain('pause');
+    expect(assetPrinted).toContain('IDENTIFIER_COVENANT_ID');
   });
 });
