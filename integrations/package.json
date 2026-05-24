@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@opensilver/sdk": "0.1.0"
+    "@opensilver/sdk": "0.1.0",
+    "kaspa-wasm": "^0.13.0"
   },
   "scripts": {
     "build": "tsc -b",

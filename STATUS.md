@@ -10,7 +10,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 22/22 vitest files (30/30 tests) + 53/53 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 23/23 vitest files (32/32 tests) + 53/53 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -134,7 +134,14 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
   - `buildKaspaStageExecutionPlan`, which resolves stage outputs into real Generator settings (`utxoEntries`, `outputs`, `changeAddress`, optional `priorityFee`)
   - `executeKaspaStageBuild`, which consumes `Generator.next()`, signs each `PendingTransaction`, optionally submits it, and serializes captured artifacts
   - `executeKaspaKcc20Deployment`, which runs the full three-stage controller-genesis → asset-genesis → initialized-controller flow with stage-specific signer payloads and amount overrides
-- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is binding these adapter surfaces to a concrete Kaspa WASM package and transaction-field population for covenant-specific scripts.
+- Bound that adapter surface to the real `kaspa-wasm` npm package (added to `integrations/package.json`) plus `tests/kcc20-kaspa-wasm.test.ts` covering:
+  - `loadKaspaWasmModule`
+  - `createKaspaWasmSignerPayload`
+  - `buildKaspaWasmPaymentOutputs`
+  - `buildKaspaWasmStageExecutionPlan`
+  - `createKaspaWasmGeneratorFactory`
+- Important current limitation: covenant-stage execution now uses real Kaspa address/private-key/payment-output objects, but covenant-bound outputs are still routed through role→address resolution rather than custom script/covenant output materialization from compiled `silverc` artifacts.
+- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is extracting real script/covenant output fields from non-AST `silverc` artifacts and feeding those into Kaspa transaction outputs.
 
 ## Phase 4 — KCC20 token patterns (current)
 

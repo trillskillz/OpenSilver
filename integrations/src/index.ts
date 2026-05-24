@@ -1,8 +1,11 @@
+import { createRequire } from 'node:module';
 import {
   type Kcc20BroadcastReadyFlow,
   type Kcc20ControllerKind,
   type PatternManifestEntry,
 } from '@opensilver/sdk';
+
+const require = createRequire(import.meta.url);
 
 export interface IntegrationManifest {
   consumer: 'wallet' | 'ide' | 'mcp';
@@ -571,5 +574,158 @@ export async function executeKaspaKcc20Deployment<TArtifact = unknown, TUtxo = K
       assetGenesis,
       controllerInitialized,
     },
+  };
+}
+
+export interface KaspaWasmAddressLike {
+  toString(): string;
+  toJSON?(): unknown;
+}
+
+export interface KaspaWasmPaymentOutputLike {
+  toJSON?(): unknown;
+}
+
+export interface KaspaWasmRpcClientLike {
+  connect?(): Promise<void> | void;
+  disconnect?(): Promise<void> | void;
+}
+
+export interface KaspaWasmModule {
+  Address: new (value: string) => KaspaWasmAddressLike;
+  PaymentOutput: new (address: KaspaWasmAddressLike, amount: bigint) => KaspaWasmPaymentOutputLike;
+  PaymentOutputs?: new (outputs: KaspaWasmPaymentOutputLike[]) => unknown;
+  Generator: new (settings: Record<string, unknown>) => KaspaGeneratorLike;
+  PrivateKey: new (value: string | Uint8Array) => unknown;
+  RpcClient: new (config: Record<string, unknown>) => KaspaWasmRpcClientLike;
+  initConsolePanicHook?: () => void;
+}
+
+export interface KaspaWasmOutputAddresses {
+  controllerAddress: string;
+  assetAddress: string;
+  recipientAddress?: string;
+}
+
+export interface KaspaWasmOutputBinding {
+  role: KaspaBuilderOutput['role'];
+  address: string;
+  amount: bigint;
+  paymentOutput: KaspaWasmPaymentOutputLike;
+}
+
+export interface KaspaWasmStageExecutionPlan<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry> {
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>;
+  generatorSettings: Record<string, unknown>;
+  signerPayloads: Array<unknown[] | unknown>;
+  outputBindings: KaspaWasmOutputBinding[];
+}
+
+export function loadKaspaWasmModule(): KaspaWasmModule {
+  return require('kaspa-wasm') as KaspaWasmModule;
+}
+
+export function installKaspaNodeWebSocketShim(webSocketImpl: unknown): void {
+  globalThis.WebSocket = webSocketImpl as typeof globalThis.WebSocket;
+}
+
+export function createKaspaWasmRpcClient(
+  module: KaspaWasmModule,
+  config: Record<string, unknown>,
+): KaspaWasmRpcClientLike {
+  return new module.RpcClient(config);
+}
+
+export function createKaspaWasmSignerPayload(
+  module: KaspaWasmModule,
+  signerHexes: Array<string | Uint8Array>,
+): unknown[] {
+  return signerHexes.map((signer) => new module.PrivateKey(signer));
+}
+
+function resolveKaspaWasmOutputAddress(
+  output: KaspaBuilderOutput,
+  addresses: KaspaWasmOutputAddresses,
+): string {
+  switch (output.role) {
+    case 'controller':
+      return addresses.controllerAddress;
+    case 'asset-minter':
+      return addresses.assetAddress;
+    case 'asset-recipient':
+      return addresses.recipientAddress ?? output.owner;
+  }
+}
+
+export function buildKaspaWasmPaymentOutputs<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry>(
+  module: KaspaWasmModule,
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>,
+  options: {
+    amounts?: KaspaStageAmountOverrides;
+    outputAddresses: KaspaWasmOutputAddresses;
+  },
+): KaspaWasmOutputBinding[] {
+  return request.outputs.map((output) => {
+    const address = resolveKaspaWasmOutputAddress(output, options.outputAddresses);
+    const amount = resolveStageOutputAmount(output, options.amounts);
+    const paymentOutput = new module.PaymentOutput(new module.Address(address), amount);
+    return {
+      role: output.role,
+      address,
+      amount,
+      paymentOutput,
+    };
+  });
+}
+
+export function createKaspaWasmGeneratorFactory(
+  module: KaspaWasmModule,
+): KaspaGeneratorFactory {
+  return (settings) => {
+    const outputs = (settings.outputs as Array<KaspaGeneratorOutput>).map(
+      (output) => new module.PaymentOutput(new module.Address(output.address), output.amount),
+    );
+
+    const generatorSettings: Record<string, unknown> = {
+      utxoEntries: settings.utxoEntries,
+      changeAddress: settings.changeAddress,
+      outputs: module.PaymentOutputs ? new module.PaymentOutputs(outputs) : outputs,
+    };
+
+    if (settings.priorityFee !== undefined) {
+      generatorSettings.priorityFee = settings.priorityFee;
+    }
+
+    return new module.Generator(generatorSettings);
+  };
+}
+
+export function buildKaspaWasmStageExecutionPlan<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry>(
+  module: KaspaWasmModule,
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>,
+  options: KaspaStageExecutionOptions & { outputAddresses: KaspaWasmOutputAddresses },
+): KaspaWasmStageExecutionPlan<TArtifact, TUtxo> {
+  const outputBindings = buildKaspaWasmPaymentOutputs(module, request, {
+    ...(options.amounts ? { amounts: options.amounts } : {}),
+    outputAddresses: options.outputAddresses,
+  });
+
+  const generatorSettings: Record<string, unknown> = {
+    utxoEntries: flattenStageUtxos(request.inputs),
+    changeAddress: options.changeAddress,
+    outputs: module.PaymentOutputs
+      ? new module.PaymentOutputs(outputBindings.map((binding) => binding.paymentOutput))
+      : outputBindings.map((binding) => binding.paymentOutput),
+  };
+
+  if (options.priorityFee !== undefined) {
+    generatorSettings.priorityFee = toBigIntAmount(options.priorityFee, 'priorityFee');
+  }
+
+  return {
+    request,
+    generatorSettings,
+    signerPayloads: getStageSignerPayloads(request, options.signers),
+    outputBindings,
   };
 }
