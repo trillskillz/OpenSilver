@@ -1,8 +1,15 @@
 pragma silverscript ^0.1.0;
 
+// Social Recovery — guardian-quorum owner replacement with delay.
+//
+// Same compiler-driven shape as Ownable: pubkey-typed owner + pending
+// slots gated by a `bool has_pending_owner` flag. See ownable.sil for the
+// rationale (NUM2BIN cap on byte[32]/pubkey-literal state writes).
+
 contract SocialRecovery(
-    byte[32] init_owner,
-    byte[32] init_pending_owner,
+    pubkey init_owner,
+    bool init_has_pending_owner,
+    pubkey init_pending_owner,
     int init_guardian_threshold,
     pubkey init_guardian1,
     pubkey init_guardian2,
@@ -10,8 +17,9 @@ contract SocialRecovery(
     int init_activation_time,
     int init_recovery_delay
 ) {
-    byte[32] owner = init_owner;
-    byte[32] pending_owner = init_pending_owner;
+    pubkey owner = init_owner;
+    bool has_pending_owner = init_has_pending_owner;
+    pubkey pending_owner = init_pending_owner;
     int guardian_threshold = init_guardian_threshold;
     pubkey guardian1 = init_guardian1;
     pubkey guardian2 = init_guardian2;
@@ -20,12 +28,13 @@ contract SocialRecovery(
     int recovery_delay = init_recovery_delay;
 
     function requireOwner(pubkey owner_pk, sig owner_sig, State prev_state) {
-        require(blake2b(owner_pk) == prev_state.owner);
+        require(owner_pk == prev_state.owner);
         require(checkSig(owner_sig, owner_pk));
     }
 
     function requirePendingOwner(pubkey pending_owner_pk, sig pending_owner_sig, State prev_state) {
-        require(blake2b(pending_owner_pk) == prev_state.pending_owner);
+        require(prev_state.has_pending_owner);
+        require(pending_owner_pk == prev_state.pending_owner);
         require(checkSig(pending_owner_sig, pending_owner_pk));
     }
 
@@ -67,7 +76,7 @@ contract SocialRecovery(
     #[covenant.singleton(mode = transition)]
     function initiate_recovery(
         State prev_state,
-        byte[32] next_owner,
+        pubkey next_owner,
         int next_activation_time,
         pubkey signer1,
         sig sig1,
@@ -77,13 +86,13 @@ contract SocialRecovery(
         sig sig3
     ) : (State) {
         requireValidConfiguration(prev_state);
-        require(next_owner != byte[32](0));
         require(next_owner != prev_state.owner);
         require(distinctGuardians(signer1, signer2, signer3));
         require(approvalCount(prev_state, signer1, sig1, signer2, sig2, signer3, sig3) >= prev_state.guardian_threshold);
         require(next_activation_time >= prev_state.activation_time);
         return({
             owner: prev_state.owner,
+            has_pending_owner: true,
             pending_owner: next_owner,
             guardian_threshold: prev_state.guardian_threshold,
             guardian1: prev_state.guardian1,
@@ -97,12 +106,12 @@ contract SocialRecovery(
     #[covenant.singleton(mode = transition)]
     function finalize_recovery(State prev_state, pubkey pending_owner_pk, sig pending_owner_sig) : (State) {
         requireValidConfiguration(prev_state);
-        require(prev_state.pending_owner != byte[32](0));
         require(tx.time >= prev_state.activation_time);
         requirePendingOwner(pending_owner_pk, pending_owner_sig, prev_state);
         return({
             owner: prev_state.pending_owner,
-            pending_owner: byte[32](0),
+            has_pending_owner: false,
+            pending_owner: prev_state.pending_owner,
             guardian_threshold: prev_state.guardian_threshold,
             guardian1: prev_state.guardian1,
             guardian2: prev_state.guardian2,
@@ -116,9 +125,11 @@ contract SocialRecovery(
     function cancel_recovery(State prev_state, pubkey owner_pk, sig owner_sig) : (State) {
         requireValidConfiguration(prev_state);
         requireOwner(owner_pk, owner_sig, prev_state);
+        require(prev_state.has_pending_owner);
         return({
             owner: prev_state.owner,
-            pending_owner: byte[32](0),
+            has_pending_owner: false,
+            pending_owner: prev_state.pending_owner,
             guardian_threshold: prev_state.guardian_threshold,
             guardian1: prev_state.guardian1,
             guardian2: prev_state.guardian2,

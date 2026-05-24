@@ -9,7 +9,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 13/13 vitest compile suite + 36/36 cargo runtime suite (5 ignored, NUM2BIN gap only)
+TESTS_PASSING: 466/466 upstream + 13/13 vitest compile suite + 46/46 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -79,18 +79,15 @@ NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then 
 | 3.12 Freelance/Payroll | `timeout_reclaim` (client post-timeout) | ✅ | — |
 | 3.2 MultiSig | `spend` (2-of-3 threshold) | ✅ | ✅ 1-of-3 below threshold |
 
-**36 runtime tests across 13 patterns, all green.** Patterns still without coverage:
+**46 runtime tests, 0 ignored, all green.** Phase 3 patterns 3.1 (Ownable), 3.2 (MultiSig), 3.3 (TimeLock), 3.4 (Vault, except owner-handoff singletons), 3.5 (BilateralEscrow), 3.6 (milestone Escrow), 3.7 (Streaming Payment), 3.8 (Vesting), 3.9 (DeadMansSwitch), 3.10 (SocialRecovery, except finalize_recovery), 3.11 (HTLC), 3.12 (Freelance/Payroll) all carry runtime engine coverage on their primary paths. Remaining minor coverage gaps:
 
-- **3.1 Ownable** singleton transitions — blocked by NUM2BIN gap below.
-- **3.7 Streaming Payment** `withdraw` singleton — runtime test not yet drafted; the contract now compiles after the single-return refactor.
-- **3.8 Vesting** `claim` singleton — same as above.
-- **3.10 Social Recovery** `initiate_recovery` + `finalize_recovery` + `cancel_recovery` — blocked by NUM2BIN gap.
-- **3.4 Vault** owner-handoff singletons (`propose_owner_transfer`, `accept_owner_transfer`) — blocked by NUM2BIN gap.
+- **3.4 Vault** owner-handoff singletons (`propose_owner_transfer`, `accept_owner_transfer`) — apply the same `has_pending_owner` refactor as Ownable to unblock.
+- **3.10 SocialRecovery** `finalize_recovery` — runtime test not yet drafted; the contract compiles after the pubkey + bool refactor.
 
 ### Compiler / contract gaps surfaced (Phase-3 followups)
 
 1. ~~**`return-must-be-last` compile failure**~~ ✅ CLOSED 2026-05-23. `streaming-payment.sil` and `vesting.sil` rewritten to the supported `#[covenant.singleton(mode = transition, termination = allowed)]` shape from upstream's AST fixture `lowers_singleton_sugar_transition_termination_allowed_two_field_state`: policy takes `next_states` from the caller, pins every field with `require(...)` constraints, and `return(next_states)` once at the end. Both contracts now run end-to-end through the engine; `cancel` and `revoke` have runtime test coverage. The withdraw/claim singletons themselves still need their own runtime tests drafted.
-2. **NUM2BIN size cap on byte[32] state writes**. Engine rejects with `push encoding is not minimal: NUM2BIN target size 32 exceeds 8 bytes` any singleton transition that writes a new byte[32] value into a state slot (runtime arg or `byte[32](0)` literal). Constructor-time byte[32] state and unchanged-byte[32]-slot continuations work fine — Vault.extend_lock and Vault.reconfigure_signers prove that. **Action paths:** refactor patterns to encode identity as `pubkey + bool flag` (Vault.reconfigure_signers proves this works), or patch the compiler lowering to use OP_PUSHDATA instead of NUM2BIN for byte[32] state writes.
+2. ~~**NUM2BIN size cap on byte[32] state writes**~~ ✅ CLOSED 2026-05-23 via pattern-side workaround. Refactored Ownable and SocialRecovery from `byte[32] owner` (blake2b hash) to `pubkey owner + bool has_pending_owner` gating. The pubkey slot is never literally cleared — the bool flag is the source of truth, so cancel/accept paths set `pending_owner: prev_state.pending_owner` and only flip the flag. Trade-off captured in each pattern's "WHEN NOT TO USE THIS": pubkeys are exposed at deploy time vs hash-committed. Upstream compiler patch to use OP_PUSHDATA for byte[32] state writes would unblock a future hash-keyed variant; tracked but not blocking.
 3. ~~**`this.age` engine-side semantics**~~ ✅ CLOSED 2026-05-23. Reading the compiler showed `this.age` lowers to `OpCheckSequenceVerify` (Kaspa's CSV), which reads `input.sequence` directly — not a current-DAA context. So we satisfy `this.age >= timeout_age` by setting the spending input's `sequence` to the desired relative-time value. DMS.claim now has positive + negative runtime coverage. Mask is `SEQUENCE_LOCK_TIME_MASK = 0x00000000ffffffff`; values must keep the disabled-bit (`1 << 63`) unset.
 
-Tracked with full test bodies kept under `#[ignore = "..."]` so the post-fix sessions can revive them with no rewrite. Counts: 5 NUM2BIN-blocked tests still ignored; the two earlier compile-blocked gaps and the DAA-score harness gap are now closed.
+All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.

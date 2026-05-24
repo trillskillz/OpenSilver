@@ -1459,71 +1459,39 @@ fn ownable_cov_id(marker: u8) -> Hash {
     Hash::from_bytes(bytes)
 }
 
-// ── ownable_*, social_recovery_* skipped: NUM2BIN size cap (issue #2) ────
-// All four singleton-transition tests skipped in this section blow up at
-// engine execution time with:
-//   `push encoding is not minimal: NUM2BIN target size 32 exceeds 8 bytes`
+// ── Ownable + SocialRecovery — restored after pubkey refactor (2026-05-23)
 //
-// Updated finding after Vault.extend_lock + Vault.reconfigure_signers
-// passed: the break is NOT about runtime byte[32] args specifically. It's
-// about *any singleton transition that writes a byte[32] state field to
-// a new value*, whether that value comes from a runtime arg
-// (Ownable.propose_transfer's next_owner; SocialRecovery.initiate's
-// new_owner) or from a literal `byte[32](0)` zero in the return body
-// (Ownable.accept_transfer and SocialRecovery.cancel_recovery).
+// Earlier in the session these singleton-transition tests were all
+// blocked by the engine's NUM2BIN-on-byte[32]-state-writes cap. The
+// patterns originally stored `byte[32] owner` and `byte[32] pending_owner`
+// (blake2b(pubkey) hashes); the compiler's lowering for "write a new
+// byte[32] value into a state slot" routed through NUM2BIN, which only
+// supports targets up to 8 bytes.
 //
-// What works (proven by the passing tests):
-//   - Constructor-time byte[32] state (KCC20, Vault, milestone escrow).
-//   - Singleton transitions that change int/pubkey fields while leaving
-//     byte[32] state slots set to `prev_state.<same_field>` unchanged
-//     (Vault.extend_lock, Vault.reconfigure_signers).
-//
-// What breaks:
-//   - Singleton transitions that need to write a new byte[32] value into
-//     a state slot — runtime arg OR literal.
-//
-// Fix paths (any of):
-//   1. Refactor patterns to encode identity as `pubkey` + a `bool flag`
-//      instead of `byte[32] hash` — pubkey runtime args work, see the
-//      Vault.reconfigure_signers test.
-//   2. Patch the compiler lowering to use OP_PUSHDATA for byte[32] state
-//      slot writes instead of routing through NUM2BIN.
-//   3. Make the dynamic-byte[32]-slot pattern a constructor-time decision
-//      and use a separate covenant per shape (heavyweight; rules out
-//      single-template owner rotation).
-//
-// Track upstream once we file the issue; do not unskip without confirming
-// either a contract refactor or a compiler patch landed.
+// Resolution: refactored both .sil contracts to use `pubkey owner` and
+// `pubkey pending_owner` directly, with `pubkey(0)` as the empty
+// sentinel. Trade-off (pubkey exposed at deploy time vs hash-committed)
+// captured in the contract comments + each pattern's "WHEN NOT TO USE
+// THIS" doc. Vault.reconfigure_signers already proved pubkey-runtime-args
+// pass the engine cleanly.
 
-#[ignore = "NUM2BIN size cap on runtime byte[32] args; see comment above"]
 #[test]
 fn ownable_propose_transfer_accepts_owner_sig() {
     let owner = random_keypair();
     let next_owner = random_keypair();
-    let owner_pk = owner.x_only_public_key().0.serialize();
-    let next_owner_pk = next_owner.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let next_owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&next_owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
+    let owner_pk = owner.x_only_public_key().0.serialize().to_vec();
+    let next_owner_pk = next_owner.x_only_public_key().0.serialize().to_vec();
 
+    // Active: has_pending=false, pending_owner slot reuses owner_pk as
+    // an arbitrary 32-byte placeholder. Next: has_pending=true, pending=
+    // next_owner_pk.
     let active = compile_contract_file(
         "contracts/core/ownable.sil",
-        vec![owner_hash.clone().into(), vec![0u8; 32].into()],
+        vec![owner_pk.clone().into(), Expr::bool(false), owner_pk.clone().into()],
     );
     let next = compile_contract_file(
         "contracts/core/ownable.sil",
-        vec![owner_hash.clone().into(), next_owner_hash.clone().into()],
+        vec![owner_pk.clone().into(), Expr::bool(true), next_owner_pk.clone().into()],
     );
 
     let input_value = 3_000u64;
@@ -1550,7 +1518,7 @@ fn ownable_propose_transfer_accepts_owner_sig() {
     let sigscript = covenant_sigscript(
         &active,
         "propose_transfer",
-        vec![next_owner_hash.into(), owner_pk.to_vec().into(), owner_sig.into()],
+        vec![next_owner_pk.into(), owner_pk.into(), owner_sig.into()],
     );
     mutable.tx.inputs[0].signature_script = sigscript;
 
@@ -1558,42 +1526,26 @@ fn ownable_propose_transfer_accepts_owner_sig() {
     assert!(result.is_ok(), "ownable propose_transfer runtime failed: {}", result.unwrap_err());
 }
 
-#[ignore = "NUM2BIN size cap on runtime byte[32] args; see propose_transfer note"]
 #[test]
 fn ownable_propose_transfer_rejects_wrong_owner_sig() {
-    // Same shape, attacker signs in place of the real owner. The
-    // require(blake2b(owner_pk) == owner) check kills it before the sig
-    // check; even if the attacker's hash happened to match, the
-    // checkSig(owner_sig, owner_pk) would still fail because the sig
-    // wouldn't match the substituted pubkey.
+    // Attacker signs in place of the real owner. The
+    // require(owner_pk == prev_state.owner) check kills it before sig
+    // verification (and the attacker's own sig wouldn't have validated
+    // against the committed owner pubkey anyway).
     let owner = random_keypair();
     let attacker = random_keypair();
     let next_owner = random_keypair();
-    let owner_pk = owner.x_only_public_key().0.serialize();
-    let attacker_pk = attacker.x_only_public_key().0.serialize();
-    let next_owner_pk = next_owner.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let next_owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&next_owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
+    let owner_pk = owner.x_only_public_key().0.serialize().to_vec();
+    let attacker_pk = attacker.x_only_public_key().0.serialize().to_vec();
+    let next_owner_pk = next_owner.x_only_public_key().0.serialize().to_vec();
 
     let active = compile_contract_file(
         "contracts/core/ownable.sil",
-        vec![owner_hash.clone().into(), vec![0u8; 32].into()],
+        vec![owner_pk.clone().into(), Expr::bool(false), owner_pk.clone().into()],
     );
     let next = compile_contract_file(
         "contracts/core/ownable.sil",
-        vec![owner_hash.clone().into(), next_owner_hash.clone().into()],
+        vec![owner_pk.clone().into(), Expr::bool(true), next_owner_pk.clone().into()],
     );
 
     let input_value = 3_000u64;
@@ -1620,7 +1572,7 @@ fn ownable_propose_transfer_rejects_wrong_owner_sig() {
     let sigscript = covenant_sigscript(
         &active,
         "propose_transfer",
-        vec![next_owner_hash.into(), attacker_pk.to_vec().into(), attacker_sig.into()],
+        vec![next_owner_pk.into(), attacker_pk.into(), attacker_sig.into()],
     );
     mutable.tx.inputs[0].signature_script = sigscript;
 
@@ -1628,39 +1580,25 @@ fn ownable_propose_transfer_rejects_wrong_owner_sig() {
     assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
 }
 
-#[ignore = "NUM2BIN size cap on runtime byte[32] args; see propose_transfer note"]
 #[test]
 fn ownable_accept_transfer_completes_handoff() {
     // active state has pending_owner set; pending owner produces a valid
     // continuation where pending_owner == 0 and owner == old pending_owner.
     let prev_owner = random_keypair();
     let new_owner = random_keypair();
-    let prev_owner_pk = prev_owner.x_only_public_key().0.serialize();
-    let new_owner_pk = new_owner.x_only_public_key().0.serialize();
-    let prev_owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&prev_owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let new_owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&new_owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
+    let prev_owner_pk = prev_owner.x_only_public_key().0.serialize().to_vec();
+    let new_owner_pk = new_owner.x_only_public_key().0.serialize().to_vec();
 
-    // Active: { owner = prev_hash, pending = new_hash }
+    // Active: { owner = prev_pk, has_pending = true, pending = new_pk }
     let active = compile_contract_file(
         "contracts/core/ownable.sil",
-        vec![prev_owner_hash.clone().into(), new_owner_hash.clone().into()],
+        vec![prev_owner_pk.into(), Expr::bool(true), new_owner_pk.clone().into()],
     );
-    // Next:  { owner = new_hash,  pending = 0 }
+    // Next:   { owner = new_pk, has_pending = false, pending = new_pk
+    //          (slot keeps prior value; the bool is source of truth) }
     let next = compile_contract_file(
         "contracts/core/ownable.sil",
-        vec![new_owner_hash.clone().into(), vec![0u8; 32].into()],
+        vec![new_owner_pk.clone().into(), Expr::bool(false), new_owner_pk.clone().into()],
     );
 
     let input_value = 3_000u64;
@@ -1687,7 +1625,7 @@ fn ownable_accept_transfer_completes_handoff() {
     let sigscript = covenant_sigscript(
         &active,
         "accept_transfer",
-        vec![new_owner_pk.to_vec().into(), new_owner_sig.into()],
+        vec![new_owner_pk.into(), new_owner_sig.into()],
     );
     mutable.tx.inputs[0].signature_script = sigscript;
 
@@ -1701,43 +1639,29 @@ fn ownable_accept_transfer_completes_handoff() {
 // flips pending_owner from 0 to the proposed owner-hash and shifts the
 // activation_time forward.
 
-#[ignore = "NUM2BIN size cap on runtime byte[32] args (next_owner hash); see Ownable note"]
 #[test]
 fn social_recovery_initiate_accepts_guardian_quorum() {
     let g1 = random_keypair();
     let g2 = random_keypair();
     let g3 = random_keypair();
-    let g1_pk = g1.x_only_public_key().0.serialize();
-    let g2_pk = g2.x_only_public_key().0.serialize();
-    let g3_pk = g3.x_only_public_key().0.serialize();
-    let owner_pk = random_keypair().x_only_public_key().0.serialize();
-    let new_owner_pk = random_keypair().x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let new_owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&new_owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+    let owner_pk = random_keypair().x_only_public_key().0.serialize().to_vec();
+    let new_owner_pk = random_keypair().x_only_public_key().0.serialize().to_vec();
     let activation_time = 100_i64;
     let next_activation_time = 150_i64;
 
     let active = compile_contract_file(
         "contracts/core/social-recovery.sil",
         vec![
-            owner_hash.clone().into(),
-            vec![0u8; 32].into(),
+            owner_pk.clone().into(),
+            Expr::bool(false),
+            owner_pk.clone().into(), // pending slot placeholder
             2_i64.into(),
-            g1_pk.to_vec().into(),
-            g2_pk.to_vec().into(),
-            g3_pk.to_vec().into(),
+            g1_pk.clone().into(),
+            g2_pk.clone().into(),
+            g3_pk.clone().into(),
             activation_time.into(),
             50_i64.into(),
         ],
@@ -1745,12 +1669,13 @@ fn social_recovery_initiate_accepts_guardian_quorum() {
     let next = compile_contract_file(
         "contracts/core/social-recovery.sil",
         vec![
-            owner_hash.clone().into(),
-            new_owner_hash.clone().into(),
+            owner_pk.into(),
+            Expr::bool(true),
+            new_owner_pk.clone().into(),
             2_i64.into(),
-            g1_pk.to_vec().into(),
-            g2_pk.to_vec().into(),
-            g3_pk.to_vec().into(),
+            g1_pk.clone().into(),
+            g2_pk.clone().into(),
+            g3_pk.clone().into(),
             next_activation_time.into(),
             50_i64.into(),
         ],
@@ -1778,7 +1703,7 @@ fn social_recovery_initiate_accepts_guardian_quorum() {
 
     // Two valid guardian sigs (g1, g2) + a non-member padded third slot.
     let attacker = random_keypair();
-    let attacker_pk = attacker.x_only_public_key().0.serialize();
+    let attacker_pk = attacker.x_only_public_key().0.serialize().to_vec();
     let sig1 = schnorr_signature(&mutable, 0, &g1);
     let sig2 = schnorr_signature(&mutable, 0, &g2);
     let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
@@ -1786,13 +1711,13 @@ fn social_recovery_initiate_accepts_guardian_quorum() {
         &active,
         "initiate_recovery",
         vec![
-            new_owner_hash.into(),
+            new_owner_pk.into(),
             next_activation_time.into(),
-            g1_pk.to_vec().into(),
+            g1_pk.into(),
             sig1.into(),
-            g2_pk.to_vec().into(),
+            g2_pk.into(),
             sig2.into(),
-            attacker_pk.to_vec().into(),
+            attacker_pk.into(),
             attacker_sig.into(),
         ],
     );
@@ -2200,7 +2125,6 @@ fn dms_ping_rejects_fallback_signature() {
 // Owner cancels a pending recovery proposal, flipping pending_owner back
 // to zero. Pure sig + state-comparison singleton; no runtime byte[32] arg.
 
-#[ignore = "NUM2BIN size cap on byte[32](0) literal in next state; see Ownable note"]
 #[test]
 fn social_recovery_cancel_accepts_owner_signature() {
     let g1 = random_keypair();
@@ -2208,36 +2132,24 @@ fn social_recovery_cancel_accepts_owner_signature() {
     let g3 = random_keypair();
     let owner = random_keypair();
     let pending = random_keypair();
-    let g1_pk = g1.x_only_public_key().0.serialize();
-    let g2_pk = g2.x_only_public_key().0.serialize();
-    let g3_pk = g3.x_only_public_key().0.serialize();
-    let owner_pk = owner.x_only_public_key().0.serialize();
-    let pending_pk = pending.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let pending_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&pending_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+    let owner_pk = owner.x_only_public_key().0.serialize().to_vec();
+    let pending_pk = pending.x_only_public_key().0.serialize().to_vec();
 
-    // Active: pending_owner is set; Next: pending_owner is zero.
+    // Active: has_pending=true with pending_pk; Next: has_pending=false,
+    // pending slot keeps its prior value (bool is the source of truth).
     let active = compile_contract_file(
         "contracts/core/social-recovery.sil",
         vec![
-            owner_hash.clone().into(),
-            pending_hash.into(),
+            owner_pk.clone().into(),
+            Expr::bool(true),
+            pending_pk.clone().into(),
             2_i64.into(),
-            g1_pk.to_vec().into(),
-            g2_pk.to_vec().into(),
-            g3_pk.to_vec().into(),
+            g1_pk.clone().into(),
+            g2_pk.clone().into(),
+            g3_pk.clone().into(),
             150_i64.into(),
             50_i64.into(),
         ],
@@ -2245,12 +2157,13 @@ fn social_recovery_cancel_accepts_owner_signature() {
     let next = compile_contract_file(
         "contracts/core/social-recovery.sil",
         vec![
-            owner_hash.into(),
-            vec![0u8; 32].into(),
+            owner_pk.clone().into(),
+            Expr::bool(false),
+            pending_pk.into(),
             2_i64.into(),
-            g1_pk.to_vec().into(),
-            g2_pk.to_vec().into(),
-            g3_pk.to_vec().into(),
+            g1_pk.into(),
+            g2_pk.into(),
+            g3_pk.into(),
             150_i64.into(),
             50_i64.into(),
         ],
@@ -2280,7 +2193,7 @@ fn social_recovery_cancel_accepts_owner_signature() {
     let sigscript = covenant_sigscript(
         &active,
         "cancel_recovery",
-        vec![owner_pk.to_vec().into(), owner_sig.into()],
+        vec![owner_pk.into(), owner_sig.into()],
     );
     mutable.tx.inputs[0].signature_script = sigscript;
 

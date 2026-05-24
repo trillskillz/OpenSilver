@@ -1,39 +1,65 @@
 pragma silverscript ^0.1.0;
 
-contract Ownable(byte[32] init_owner, byte[32] init_pending_owner) {
-    byte[32] owner = init_owner;
-    byte[32] pending_owner = init_pending_owner;
+// Ownable — owner key with two-step handoff.
+//
+// State stores owner and pending_owner as raw `pubkey` values and gates
+// the pending-owner slot with a `bool has_pending_owner` flag rather than
+// using a sentinel pubkey value. Two compiler constraints drive this
+// shape:
+//   1. The current silverscript compiler routes singleton-transition
+//      writes of byte[32] state slots through NUM2BIN (8-byte cap), so
+//      pubkey-typed state slots are the only kind that compiles. That
+//      rules out `byte[32] owner` (which would store blake2b(pubkey)).
+//   2. A `pubkey(N)` literal where N != prev_state.<field> hits the same
+//      8-byte NUM2BIN cap when written into a state slot, so the
+//      "clear-the-pending-owner" path cannot literally assign
+//      `pending_owner: pubkey(0)`. The bool flag side-steps that: we
+//      never write a fresh pubkey literal into the slot during transfer
+//      cancellation or acceptance — the pubkey slot is only updated
+//      from another pubkey-typed state field or a pubkey runtime arg.
+//
+// Trade-off documented in docs/patterns/core/ownable.md "WHEN NOT TO USE
+// THIS": pubkeys are exposed at deploy time rather than commit-and-hidden
+// behind blake2b. If you need post-quantum pubkey hiding for the owner
+// slot, Ownable v1 is not the right pattern.
 
-    function requireOwner(pubkey owner_pk, sig owner_sig) {
-        require(blake2b(owner_pk) == owner);
+contract Ownable(pubkey init_owner, bool init_has_pending_owner, pubkey init_pending_owner) {
+    pubkey owner = init_owner;
+    bool has_pending_owner = init_has_pending_owner;
+    pubkey pending_owner = init_pending_owner;
+
+    function requireOwner(pubkey owner_pk, sig owner_sig, State prev_state) {
+        require(owner_pk == prev_state.owner);
         require(checkSig(owner_sig, owner_pk));
     }
 
-    function requirePendingOwner(pubkey pending_owner_pk, sig pending_owner_sig) {
-        require(blake2b(pending_owner_pk) == pending_owner);
+    function requirePendingOwner(pubkey pending_owner_pk, sig pending_owner_sig, State prev_state) {
+        require(prev_state.has_pending_owner);
+        require(pending_owner_pk == prev_state.pending_owner);
         require(checkSig(pending_owner_sig, pending_owner_pk));
     }
 
     #[covenant.singleton(mode = transition)]
-    function propose_transfer(State prev_state, byte[32] next_owner, pubkey owner_pk, sig owner_sig) : (State) {
-        requireOwner(owner_pk, owner_sig);
-        require(next_owner != byte[32](0));
+    function propose_transfer(State prev_state, pubkey next_owner, pubkey owner_pk, sig owner_sig) : (State) {
+        requireOwner(owner_pk, owner_sig, prev_state);
         require(next_owner != prev_state.owner);
-        require(next_owner != prev_state.pending_owner);
-        return({ owner: prev_state.owner, pending_owner: next_owner });
+        return({ owner: prev_state.owner, has_pending_owner: true, pending_owner: next_owner });
     }
 
     #[covenant.singleton(mode = transition)]
     function accept_transfer(State prev_state, pubkey pending_owner_pk, sig pending_owner_sig) : (State) {
-        require(prev_state.pending_owner != byte[32](0));
-        requirePendingOwner(pending_owner_pk, pending_owner_sig);
-        return({ owner: prev_state.pending_owner, pending_owner: byte[32](0) });
+        requirePendingOwner(pending_owner_pk, pending_owner_sig, prev_state);
+        // The pending_owner slot keeps its prior value (no fresh literal
+        // is written) — has_pending_owner = false is the source of truth.
+        return({ owner: prev_state.pending_owner, has_pending_owner: false, pending_owner: prev_state.pending_owner });
     }
 
     #[covenant.singleton(mode = transition)]
     function cancel_transfer(State prev_state, pubkey owner_pk, sig owner_sig) : (State) {
-        requireOwner(owner_pk, owner_sig);
-        require(prev_state.pending_owner != byte[32](0));
-        return({ owner: prev_state.owner, pending_owner: byte[32](0) });
+        requireOwner(owner_pk, owner_sig, prev_state);
+        require(prev_state.has_pending_owner);
+        // Same idea: leave the pending_owner pubkey slot at its prior
+        // value; the bool flag is what gates logic.
+        return({ owner: prev_state.owner, has_pending_owner: false, pending_owner: prev_state.pending_owner });
     }
 }
