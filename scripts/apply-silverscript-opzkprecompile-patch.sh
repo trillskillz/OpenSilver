@@ -9,6 +9,8 @@ SILVERC_BIN="${UPSTREAM_DIR}/target/debug/silverc"
 bash "${REPO_ROOT}/scripts/bootstrap-silverc.sh"
 
 cd "${UPSTREAM_DIR}"
+git reset --hard HEAD >/dev/null
+git clean -fd >/dev/null
 
 if rg -q '"OpZkPrecompile" => compile_opcode_builtin_call' silverscript-lang/src/compiler/compile.rs \
   && rg -q '"OpZkPrecompile" => "bool"' silverscript-lang/src/compiler/debug_value_types.rs \
@@ -23,15 +25,7 @@ cargo build --manifest-path silverscript-lang/Cargo.toml --bin silverc
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
-cat > "${TMP_DIR}/zk_minimal.sil" <<'EOF'
-pragma silverscript ^0.1.0;
+SMOKE_CONTRACT="${REPO_ROOT}/contracts/zk/opzkprecompile-smoke.sil"
 
-contract ZkMinimal() {
-    entrypoint function verify() {
-        require(OpZkPrecompile());
-    }
-}
-EOF
-
-"${SILVERC_BIN}" --ast-only "${TMP_DIR}/zk_minimal.sil" --output "${TMP_DIR}/zk_minimal.json"
-echo "Patched silverc smoke test passed: ${TMP_DIR}/zk_minimal.sil"
+"${SILVERC_BIN}" --ast-only "${SMOKE_CONTRACT}" --output "${TMP_DIR}/zk_minimal.json"
+echo "Patched silverc smoke test passed: ${SMOKE_CONTRACT}"

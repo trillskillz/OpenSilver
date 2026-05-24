@@ -21,7 +21,7 @@ NEXT_PHASE: 5 (turn the validated local OpZkPrecompile patch into the upstream s
 
 - Repo initialised, MIT-licensed, single commit history.
 - Shared compiler bootstrap landed at `scripts/bootstrap-silverc.sh`; CI and local setup now use the same pinned `silverc` acquisition/build path.
-- Local Phase-5 experimental unblock landed: `patches/silverscript-opzkprecompile.patch` + `scripts/apply-silverscript-opzkprecompile-patch.sh` (`npm run patch:silverc:zk`) apply the RFC patch to the pinned upstream checkout, rebuild `silverc`, and smoke-test a minimal `.sil` using `require(OpZkPrecompile())`.
+- Local Phase-5 experimental unblock landed: `patches/silverscript-opzkprecompile.patch` + `scripts/apply-silverscript-opzkprecompile-patch.sh` (`npm run patch:silverc:zk`) apply the RFC patch to the pinned upstream checkout, rebuild `silverc`, and smoke-test the tracked contract `contracts/zk/opzkprecompile-smoke.sil`.
 - SDK safety rail landed: `buildGroth16WitnessPlan()` in `sdk/src/index.ts` returns canonical push-order + invocation stack views for Groth16 precompile operands, so Phase-5 callers do not hand-roll the verifier stack order.
 - Upstream `kaspanet/silverscript` cloned at `2c46231`. **`cargo test -p silverscript-lang` runs 466 tests across 21 suites with 0 failures** — toolchain confirmed working.
 - KIP-16/17/20/21 fetched from their open PR branches into `references/kips/`. Per-KIP summary in `references/kips/SUMMARY.md`.

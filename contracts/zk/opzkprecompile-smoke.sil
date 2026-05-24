@@ -1,0 +1,17 @@
+pragma silverscript ^0.1.0;
+
+// Experimental Phase 5 compiler smoke test.
+//
+// This contract is intentionally minimal: it exists only to prove that a
+// patched silverc recognizes the `OpZkPrecompile()` builtin at parse/typecheck
+// time. It does NOT push the real verifier operands yet, so it is not meant
+// for runtime execution and does not represent a usable pattern contract.
+//
+// The local patch lane (`npm run patch:silverc:zk`) compiles this file after
+// applying the OpenSilver RFC patch to the pinned upstream silverscript clone.
+
+contract OpZkPrecompileSmoke() {
+    entrypoint function smoke() {
+        require(OpZkPrecompile());
+    }
+}

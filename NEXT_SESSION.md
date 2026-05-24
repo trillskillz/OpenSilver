@@ -132,7 +132,7 @@ Four ZK-aware patterns specified in `docs/patterns/zk/` with full design + inten
 Three unblock paths (in order of preference):
 
 1. **File a PR against `kaspanet/silverscript`** carrying the RFC's patch sketch. Recommended PR title: "Expose OpZkPrecompile builtin to SilverScript front-end." Reviewers: `@OriNewman` (compiler maintainer), `@saefstroem` (KIP-16 author). This is the right answer; the RFC includes the test plan and a working `.sil` minimal example. Tracking: GitHub issue #3.
-2. **Use the local experimental patch lane** — `npm run patch:silverc:zk` applies `patches/silverscript-opzkprecompile.patch` to the pinned upstream checkout, rebuilds `silverc`, and smoke-tests a minimal `.sil` with `require(OpZkPrecompile())`. Use this for local Phase-5 prototyping until path 1 lands upstream.
+2. **Use the local experimental patch lane** — `npm run patch:silverc:zk` applies `patches/silverscript-opzkprecompile.patch` to the pinned upstream checkout, rebuilds `silverc`, and smoke-tests the tracked contract `contracts/zk/opzkprecompile-smoke.sil`. Use this for local Phase-5 prototyping until path 1 lands upstream.
 3. **Raw-script splice** at the OpenSilver compile pipeline level: run `silverc`, then walk the emitted bytecode and insert `OpZkPrecompile` (`0xa6`) at a marker-comment position. Brittle stopgap; remove the moment path 1 lands.
 4. **Wait** — silverscript-lang is under active development; the builtin may land before Toccata activation. Worth a low-priority tracking question to Newman.
 
