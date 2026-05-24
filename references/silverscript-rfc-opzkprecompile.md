@@ -129,6 +129,8 @@ Low for the narrow goal of exposing the builtin name. The change is two one-line
 
 **Positive follow-up result:** the compiler's builtin lowering path itself is fine. `compile_opcode_call()` pushes builtin arguments in source order, then emits the opcode. A local experiment changing the builtin arity to 9 successfully compiled a fixed 5-public-input Groth16-style call of the form `OpZkPrecompile(a, b, c, d, e, 5, proof, vk, 0x20)`. So the remaining problem is surface/API design for variable `n_public_inputs`, not argument ordering inside the compiler.
 
+**Additional narrowing result:** generic array arguments also do not solve this automatically. `compile_array_expr()` lowers arrays as encoded/concatenated blob data on the stack, not as separate verifier operands. So a surface like `OpGroth16Verify(vk, proof, publicInputs)` would still need custom lowering if `publicInputs` is supposed to become multiple stack items.
+
 That means this PR may need to be paired with either expression statements / explicit push syntax or a structured higher-arity builtin lowering before downstream projects can write complete ZK-aware contracts in plain `.sil`.
 
 ## Adoption path for OpenSilver
