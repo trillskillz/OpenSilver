@@ -2407,3 +2407,113 @@ fn vault_reconfigure_signers_accepts_owner_and_quorum() {
 
     let _ = pk3;
 }
+
+// ─── DeadMansSwitch.claim ───────────────────────────────────────────────────
+//
+// Resolved gap from the earlier session: `this.age` in SilverScript lowers
+// to OpCheckSequenceVerify (Kaspa's CSV), which reads `input.sequence`
+// directly — not a current-DAA-score context. So we satisfy `this.age >=
+// timeout_age` by setting the spending input's sequence to >= timeout_age
+// (and keeping the SEQUENCE_LOCK_TIME_DISABLED high bit unset).
+
+#[test]
+fn dms_claim_accepts_fallback_after_timeout_age() {
+    let owner = random_keypair();
+    let fallback = random_keypair();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let fallback_pk = fallback.x_only_public_key().0.serialize();
+    let owner_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&owner_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let fallback_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&fallback_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout_age = 100_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/dead-man-switch.sil",
+        vec![
+            owner_hash.into(),
+            fallback_hash.into(),
+            timeout_age.into(),
+            10_i64.into(),
+        ],
+    );
+
+    let input_value = 3_000u64;
+    let dummy_dest = random_keypair().x_only_public_key().0.serialize();
+    let (mut tx, _payout) = build_terminal_payout_tx(&dummy_dest, input_value, 0, 0xF2);
+    // Set the input's sequence to the timeout_age so OpCheckSequenceVerify
+    // sees a satisfied relative-time lock. Low value, no disabled-bit risk.
+    tx.inputs[0].sequence = timeout_age as u64;
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let fallback_sig = schnorr_signature(&mutable, 0, &fallback);
+    let sigscript = compiled
+        .build_sig_script("claim", vec![fallback_pk.to_vec().into(), fallback_sig.into()])
+        .expect("dms claim sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "dms claim runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn dms_claim_rejects_before_timeout_age() {
+    // Sequence sits below timeout_age — CSV rejects with UnsatisfiedLockTime.
+    let owner = random_keypair();
+    let fallback = random_keypair();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let fallback_pk = fallback.x_only_public_key().0.serialize();
+    let owner_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&owner_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let fallback_hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .to_state()
+        .update(&fallback_pk)
+        .finalize()
+        .as_bytes()
+        .to_vec();
+    let timeout_age = 100_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/dead-man-switch.sil",
+        vec![
+            owner_hash.into(),
+            fallback_hash.into(),
+            timeout_age.into(),
+            10_i64.into(),
+        ],
+    );
+
+    let input_value = 3_000u64;
+    let dummy_dest = random_keypair().x_only_public_key().0.serialize();
+    let (mut tx, _payout) = build_terminal_payout_tx(&dummy_dest, input_value, 0, 0xF3);
+    tx.inputs[0].sequence = 50; // below timeout_age
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let fallback_sig = schnorr_signature(&mutable, 0, &fallback);
+    let sigscript = compiled
+        .build_sig_script("claim", vec![fallback_pk.to_vec().into(), fallback_sig.into()])
+        .expect("dms claim sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("early dms claim must fail");
+    assert!(
+        matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse | TxScriptError::UnsatisfiedLockTime(_)),
+        "unexpected error: {err:?}"
+    );
+}
