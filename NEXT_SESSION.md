@@ -112,9 +112,33 @@ Runtime test harness extensions needed for 4.x:
 - `readInputStateWithTemplate` setup — building a template prefix/suffix/hash and pushing them into ctor state.
 - Three-phase genesis lifecycle helper (minter genesis → asset genesis → mint).
 
-## Phase-3 minor coverage gaps (added 2026-05-23)
+## Phase-3 minor coverage gaps (added 2026-05-23) ✅ CLOSED 2026-05-24
 
-These don't block Phase 4 but should be cleared on a quiet pass:
+Both items closed in commit `<vault-refactor-commit>`:
 
-- **3.4 Vault** owner-handoff singletons (`propose_owner_transfer`, `accept_owner_transfer`). Same NUM2BIN-driven fix as Ownable/SocialRecovery — apply the `pubkey + bool has_pending_owner` shape.
-- **3.10 SocialRecovery** `finalize_recovery` runtime test. The contract compiles; the test was deferred because of pubkey-slot-write concerns that are now resolved.
+- **3.4 Vault** owner-handoff — refactored to `pubkey + has_pending_owner` shape; `propose_owner_transfer` and `accept_owner_transfer` runtime-verified.
+- **3.10 SocialRecovery** `finalize_recovery` — positive + negative runtime tests landed (`accepts_pending_owner_after_activation`, `rejects_before_activation`).
+
+Runtime suite is now **57/57 (50 core + 7 kcc20), 0 ignored**.
+
+## Phase 5 queue (added 2026-05-24)
+
+Four ZK-aware patterns specified in `docs/patterns/zk/` with full design + intended `.sil` shape. **All four compile-blocked** on silverscript-lang exposing `OpZkPrecompile` as a callable builtin. Engine side is shipped (KIP-16, `rusty-kaspa#775` merged 2026-02-05); SilverScript front-end at pinned commit `2c46231` has no builtin wired through.
+
+Three unblock paths (in order of preference):
+
+1. **Land an upstream patch** to `kaspanet/silverscript/silverscript-lang/std/builtins.sil` adding `OpZkPrecompile` as a documented builtin with the canonical stack order (uncompressed VK, compressed proof, `n_inputs: i32`, then n public inputs in reverse). Roughly a one-screen change. OpenSilver should contribute it. This is the right answer.
+2. **Raw-script splice** at the OpenSilver compile pipeline level: run `silverc`, then walk the emitted bytecode and insert `OpZkPrecompile` (`0xa6`) at a marker-comment position. Brittle stopgap; remove the moment path 1 lands.
+3. **Wait** — silverscript-lang is under active development; the builtin may land before Toccata activation. Worth a low-priority tracking question to Newman.
+
+Implementation order once unblocked:
+
+1. **5.1 Verified Computation** — simplest. Pins down the Groth16 stack-order pattern that 5.2–5.4 build on. SDK helper `sdk/zk/groth16.ts` ships alongside.
+2. **5.3 ZK-Verified Oracle** — combines 5.1's Groth16 surface with the HodlVault-style M-of-N committee threshold. Demonstrates composition.
+3. **5.2 Private Asset Transfer** — most ambitious; circuit IS the pattern. Needs a working Groth16 prover for a specific circuit before the covenant is meaningful.
+4. **5.4 Proof-Stitched Multi-Pattern** — the vProgs forward-compat target. Should be LAST; needs 5.1's stack-order pattern stable and battle-tested first.
+
+Each implementation needs:
+- `contracts/zk/<name>.sil` (template ready in design doc's "Intended `.sil` shape" section)
+- Runtime test wiring a real Groth16 proof — the harness extension is non-trivial because the proof has to actually verify, so we need either a vendored fixture VK+proof pair or an in-test prover.
+- SDK glue in `sdk/zk/` (canonical stack-order builder per the helper sketch in `docs/patterns/zk/README.md`).

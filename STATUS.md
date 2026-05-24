@@ -4,16 +4,17 @@
 PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
 PHASE_2_STATUS: IN_PROGRESS (monorepo scaffold landed; 12 Phase-3 patterns scaffolded; runtime harness live)
 PHASE_4_STATUS: IN_PROGRESS (KCC20 asset contract scaffolded as 4.1; KCC20Ownable, KCC20Pausable, KCC20Capped, and KCC20Vesting controllers scaffolded as 4.2/4.3/4.4/4.5)
-PATTERNS_COMPLETE: 0/22 (12 Phase-3 scaffolds runtime-verified; 5 Phase-4 patterns scaffolded: KCC20 reference + KCC20Ownable + KCC20Pausable + KCC20Capped + KCC20Vesting)
+PHASE_5_STATUS: DESIGN ONLY (4 patterns specified in docs/patterns/zk/; compilation blocked on silverscript-lang exposing OpZkPrecompile)
+PATTERNS_COMPLETE: 0/22 (12 Phase-3 scaffolds runtime-verified incl. owner-handoff + finalize_recovery; 5 Phase-4 patterns scaffolded; Phase-5 design-only)
 TESTNET_TXS: []
-DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
+DOCS_PAGES: 16 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
-              docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 23/23 vitest files (32/32 tests) + 53/53 cargo runtime suite (0 ignored)
+              docs/site/docs/intro, docs/patterns/zk/README + 4 ZK pattern designs)
+TESTS_PASSING: 466/466 upstream + 23/23 vitest files (32/32 tests) + 57/57 cargo runtime suite (50 core + 7 kcc20, 0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
-BLOCKERS: NONE for continuing Phase 2/3
-NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
+BLOCKERS: NONE for continuing Phase 2/3/4. Phase 5 blocked on silverscript-lang exposing OpZkPrecompile builtin (KIP-16 opcode 0xa6 — engine side already shipped via rusty-kaspa#775; compile-side not wired through yet at pinned commit 2c46231).
+NEXT_PHASE: 4 (finish KCC20 SDK glue + extract real script/covenant output fields from silverc artifacts) or upstream patch to silverscript-lang adding OpZkPrecompile builtin to unblock Phase 5
 ```
 
 ## What's done

@@ -50,7 +50,7 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 
 - **Phase 3 — Core (12):** Ownable, MultiSig, TimeLock, Vault, Escrow (bilateral), Escrow (milestone), Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Atomic Swap (HTLC), Freelance/Payroll. **All 12 scaffolds runtime-verified end-to-end** (46/46 runtime tests, see Toolchain below).
 - **Phase 4 — KCC20 token (6):** Reference, Ownable, Pausable, Capped, Vesting, Snapshot. **Asset contract (4.1) scaffolded** at `contracts/tokens/kcc20.sil`; **KCC20Ownable (4.2)**, **KCC20Pausable (4.3)**, **KCC20Capped (4.4)**, and **KCC20Vesting (4.5)** controller covenants are scaffolded at `contracts/tokens/`; 4.6 is deferred until KIP-21 lane stability lands.
-- **Phase 5 — ZK-aware (4):** Verified Computation, Private Asset Transfer, ZK-Verified Oracle, Proof-Stitched Multi-Pattern. Implementation guidance captured in `references/kips/SUMMARY.md`; not yet scaffolded.
+- **Phase 5 — ZK-aware (4):** Verified Computation, Private Asset Transfer, ZK-Verified Oracle, Proof-Stitched Multi-Pattern. **Design-only**: four pattern designs landed in `docs/patterns/zk/`, each carrying state layout, intended `.sil` shape, public-inputs schema, cost amortisation table (5.4), and "WHEN NOT TO USE THIS" section. Compilation blocked on silverscript-lang exposing `OpZkPrecompile` as a callable builtin — the engine-side opcode (`0xa6`) is fully shipped via `kaspanet/rusty-kaspa#775` but the SilverScript front-end at our pinned commit `2c46231` has no builtin wired through. Unblock paths documented in `docs/patterns/zk/README.md`.
 
 ## Toolchain
 
