@@ -1,5 +1,9 @@
 import { createRequire } from 'node:module';
 import {
+  type CompiledScriptArtifact,
+  type CovenantScriptPublicKeyShape,
+  describeCovenantScriptPublicKey,
+  extractCompiledScript,
   type Kcc20BroadcastReadyFlow,
   type Kcc20ControllerKind,
   type PatternManifestEntry,
@@ -655,6 +659,100 @@ function resolveKaspaWasmOutputAddress(
     case 'asset-recipient':
       return addresses.recipientAddress ?? output.owner;
   }
+}
+
+// ─── Covenant-bound output materialisation ─────────────────────────────────
+//
+// Previously, every output's address came from the role→address book —
+// 'controller' → addressBook.controllerAddress, etc. That was the documented
+// "honest limitation": covenant-bound outputs (covenantBound: true) need an
+// address that's the P2SH-of-the-compiled-redeem-script, not a fixed
+// per-role address. Without this, a wallet broadcasting these transactions
+// can't recreate the same scriptPubKey the contract expects via
+// `validateOutputState`, so the next-state P2SH commitment doesn't match.
+//
+// This block lets the integrations layer derive the real P2SH address from
+// the compiled artifact (compile-mode silverc output) via a small callback
+// the kaspa-wasm consumer plugs in. We deliberately take a callback rather
+// than baking in kaspa-wasm's exact P2SH-derivation API name: kaspa-wasm
+// versions have variously called it `addressFromScriptPublicKey`,
+// `payToScriptHashAddress`, or shipped P2SH via `Address.fromScriptPublicKey`.
+// The callback shape is "given (redeem_script: Uint8Array, networkType:
+// string), return a Kaspa address string."
+
+export type P2shAddressDeriver = (redeemScript: Uint8Array, networkType: string) => string;
+
+export interface CovenantOutputMaterializerOptions {
+  networkType: string;
+  deriver: P2shAddressDeriver;
+  artifactsByRole: Partial<Record<KaspaBuilderOutput['role'], CompiledScriptArtifact>>;
+}
+
+export interface MaterializedCovenantOutput {
+  role: KaspaBuilderOutput['role'];
+  covenantBound: boolean;
+  /** P2SH address derived from the compiled redeem script (covenant-bound
+   *  outputs) or the role-label fallback (non-covenant outputs). */
+  address: string;
+  /** Present iff covenantBound and the role has a registered artifact.
+   *  `scriptPublicKey` stays null at this layer — the kaspa-wasm consumer
+   *  computes the full SPK bytes when constructing `PaymentOutput`. */
+  scriptShape?: CovenantScriptPublicKeyShape;
+}
+
+export function materializeCovenantOutput(
+  output: KaspaBuilderOutput,
+  fallbackAddresses: KaspaWasmOutputAddresses,
+  options: CovenantOutputMaterializerOptions,
+): MaterializedCovenantOutput {
+  const fallback = resolveKaspaWasmOutputAddress(output, fallbackAddresses);
+  if (!output.covenantBound) {
+    return { role: output.role, covenantBound: false, address: fallback };
+  }
+  const artifact = options.artifactsByRole[output.role];
+  if (!artifact) {
+    // Honest fallback: covenant-bound but no artifact wired for this role.
+    // Returning the role-label address would silently produce a wrong
+    // scriptPubKey; we surface it loudly instead so the caller knows the
+    // wiring is incomplete for this stage.
+    throw new Error(
+      `covenant-bound ${output.role} output has no compiled artifact registered; ` +
+        'pass options.artifactsByRole[<role>] = the silverc compile result for the ' +
+        'matching contract stage.',
+    );
+  }
+  const shape = describeCovenantScriptPublicKey(artifact);
+  const address = options.deriver(shape.redeemScript, options.networkType);
+  return {
+    role: output.role,
+    covenantBound: true,
+    address,
+    scriptShape: {
+      ...shape,
+      address,
+    },
+  };
+}
+
+/**
+ * Materialises a stage's outputs to real Kaspa addresses: covenant-bound
+ * outputs get a P2SH-derived address from their compiled redeem script;
+ * non-covenant outputs get the role-label fallback from the address book.
+ * The artifactsByRole map is built per-stage because each stage of the
+ * KCC20 three-phase lifecycle commits to a different next-state script.
+ */
+export function materializeKaspaStageOutputs<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry>(
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>,
+  fallbackAddresses: KaspaWasmOutputAddresses,
+  options: CovenantOutputMaterializerOptions,
+): MaterializedCovenantOutput[] {
+  return request.outputs.map((output) => materializeCovenantOutput(output, fallbackAddresses, options));
+}
+
+export function loadCompiledScriptArtifact(artifact: unknown): CompiledScriptArtifact {
+  // Validate by attempting extraction; returns the artifact narrowed.
+  extractCompiledScript(artifact);
+  return artifact as CompiledScriptArtifact;
 }
 
 export function buildKaspaWasmPaymentOutputs<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry>(

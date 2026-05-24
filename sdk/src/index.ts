@@ -848,13 +848,25 @@ export function runSilvercCompileSpec<TArtifact = unknown>(
   } = {},
 ): SilvercRunResult<TArtifact> {
   const tempDir = mkdtempSync(join(tmpdir(), 'opensilver-sdk-silverc-'));
-  const constructorArgsPath = join(tempDir, 'ctor-args.json');
   const outputPath = join(tempDir, spec.mode === 'ast-only' ? 'artifact-ast.json' : 'artifact.json');
-  writeFileSync(constructorArgsPath, JSON.stringify(spec.constructorArgs), 'utf8');
+
+  // silverc's --ast-only mode skips constructor-args entirely. The compile
+  // mode reads them via the ExprKind serde-tagged JSON shape, so we encode
+  // at the write boundary. The SDK lifecycle planners pass placeholder
+  // strings like '<controller-covenant-id>' in constructor lists destined
+  // for ast-only runs (they exist only for the manifest's notes/comments),
+  // and those placeholders would fail hex validation if we encoded them
+  // unconditionally — only encode when the run will actually pass them in.
+  let constructorArgsPath: string | undefined;
+  if (spec.mode === 'compile') {
+    constructorArgsPath = join(tempDir, 'ctor-args.json');
+    const encodedArgs = encodeConstructorArgsForSilverc(spec.constructorArgs);
+    writeFileSync(constructorArgsPath, JSON.stringify(encodedArgs), 'utf8');
+  }
 
   const command = buildSilvercCommandPlan(spec, {
     ...(options.repoRoot ? { repoRoot: options.repoRoot } : {}),
-    constructorArgsPath,
+    ...(constructorArgsPath ? { constructorArgsPath } : {}),
     outputPath,
   });
 
@@ -1092,4 +1104,130 @@ export function getDefaultSilvercBinary(): string {
 
 export function getKcc20AssetDocPath(): string {
   return KCC20_ASSET_DOC_PATH;
+}
+
+// ─── silverc constructor-args bridge ─────────────────────────────────────────
+//
+// The SDK builds constructor args as raw scalar arrays
+// (`Array<string | number | boolean>`) for ergonomic call sites. The silverc
+// CLI deserialises ctor args via the `ExprKind` serde tag — every argument
+// must be wrapped as `{"kind": "<snake_case>", "data": <payload>}`. We hide
+// that translation behind `encodeConstructorArgsForSilverc()` so the rest of
+// the SDK never sees the raw JSON shape.
+//
+// Schema (from `silverscript-lang::ast::ExprKind`):
+//   - { kind: 'int',   data: number }          // i64
+//   - { kind: 'bool',  data: boolean }
+//   - { kind: 'byte',  data: number }          // 0..255
+//   - { kind: 'array', data: ExprJson[] }      // arrays of any of the above
+// A 32-byte pubkey or hash becomes `{ kind: 'array', data: [{kind:'byte', data:N}, ...] }`.
+
+export type SilvercExprJson =
+  | { kind: 'int'; data: number }
+  | { kind: 'bool'; data: boolean }
+  | { kind: 'byte'; data: number }
+  | { kind: 'array'; data: SilvercExprJson[] };
+
+const HEX_PATTERN = /^(0x)?[0-9a-fA-F]+$/;
+
+function isHexString(value: string): boolean {
+  if (!HEX_PATTERN.test(value)) return false;
+  const body = value.startsWith('0x') ? value.slice(2) : value;
+  return body.length % 2 === 0 && body.length > 0;
+}
+
+function decodeHexToBytes(value: string): number[] {
+  const body = value.startsWith('0x') ? value.slice(2) : value;
+  const bytes: number[] = [];
+  for (let i = 0; i < body.length; i += 2) {
+    bytes.push(parseInt(body.slice(i, i + 2), 16));
+  }
+  return bytes;
+}
+
+export function encodeConstructorArgForSilverc(value: string | number | boolean): SilvercExprJson {
+  if (typeof value === 'boolean') {
+    return { kind: 'bool', data: value };
+  }
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value)) {
+      throw new Error(`silverc int args must be integers; got ${value}`);
+    }
+    return { kind: 'int', data: value };
+  }
+  if (typeof value === 'string') {
+    if (!isHexString(value)) {
+      throw new Error(`silverc string ctor args must be hex-encoded byte arrays; got ${JSON.stringify(value)}`);
+    }
+    const bytes = decodeHexToBytes(value);
+    return {
+      kind: 'array',
+      data: bytes.map((byte) => ({ kind: 'byte', data: byte } as const)),
+    };
+  }
+  throw new Error(`unsupported ctor arg type: ${typeof value}`);
+}
+
+export function encodeConstructorArgsForSilverc(args: Array<string | number | boolean>): SilvercExprJson[] {
+  return args.map(encodeConstructorArgForSilverc);
+}
+
+// ─── Compiled-script extraction + P2SH derivation ───────────────────────────
+//
+// silverc's compile-mode output is JSON with a `script: number[]` field
+// (byte array of the redeem script). For covenant-bound outputs in a
+// transaction, the scriptPublicKey is the P2SH-of-this-script, which Kaspa
+// derives as `OpBlake2bWithKey("TransactionSigningHash", script)`-prefixed
+// blake2b-256 wrapped in the P2SH opcode envelope. The runtime tests
+// already use `kaspa_txscript::pay_to_script_hash_script(&script)` for
+// this exact derivation.
+//
+// The SDK side cannot import the Rust crate; instead it exposes the raw
+// script bytes via `extractCompiledScript()` and a structured envelope
+// description via `describeCovenantScriptPublicKey()`. The integrations
+// layer combines `extractCompiledScript()` with `kaspa-wasm`'s ScriptBuilder
+// to produce the actual scriptPublicKey + address.
+
+export interface CompiledScriptArtifact {
+  contract_name?: string;
+  compiler_version?: string;
+  script: number[];
+}
+
+export function extractCompiledScript(artifact: unknown): Uint8Array {
+  if (!artifact || typeof artifact !== 'object') {
+    throw new Error('expected silverc compile artifact to be an object');
+  }
+  const maybe = artifact as { script?: unknown };
+  if (!Array.isArray(maybe.script)) {
+    throw new Error('silverc compile artifact missing required `script` byte array');
+  }
+  const bytes = new Uint8Array(maybe.script.length);
+  for (let i = 0; i < maybe.script.length; i += 1) {
+    const value = (maybe.script as unknown[])[i];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 255) {
+      throw new Error(`silverc script byte at index ${i} is not a u8: ${String(value)}`);
+    }
+    bytes[i] = value;
+  }
+  return bytes;
+}
+
+export interface CovenantScriptPublicKeyShape {
+  encoding: 'p2sh';
+  redeemScript: Uint8Array;
+  // The integrations layer fills these in once kaspa-wasm has materialised
+  // the script-public-key + address; the SDK constructor leaves them null
+  // so consumers must explicitly look them up.
+  scriptPublicKey: Uint8Array | null;
+  address: string | null;
+}
+
+export function describeCovenantScriptPublicKey(artifact: unknown): CovenantScriptPublicKeyShape {
+  return {
+    encoding: 'p2sh',
+    redeemScript: extractCompiledScript(artifact),
+    scriptPublicKey: null,
+    address: null,
+  };
 }
