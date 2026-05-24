@@ -1279,3 +1279,91 @@ export function describeCovenantScriptPublicKey(artifact: unknown): CovenantScri
     address: null,
   };
 }
+
+// ─── Phase 5 ZK helper plans ────────────────────────────────────────────────
+
+export const OP_ZK_PRECOMPILE_GROTH16_TAG = 0x20;
+
+export interface ZkStackBytesSlot {
+  kind: 'bytes';
+  label: string;
+  bytes: Uint8Array;
+}
+
+export interface ZkStackIntSlot {
+  kind: 'int';
+  label: string;
+  value: number;
+}
+
+export type ZkStackSlot = ZkStackBytesSlot | ZkStackIntSlot;
+
+export interface Groth16WitnessBuildOptions {
+  verifyingKey: Uint8Array;
+  proof: Uint8Array;
+  publicInputs: Uint8Array[];
+  expectedPublicInputs?: number;
+}
+
+export interface Groth16WitnessPlan {
+  precompile: 'groth16';
+  tag: number;
+  // Push these slots in order, then push `tag`, then invoke OpZkPrecompile.
+  pushOrder: ZkStackSlot[];
+  // Resulting stack at invocation time, top -> bottom.
+  stackTopToBottom: ZkStackSlot[];
+}
+
+function cloneBytes(value: Uint8Array): Uint8Array {
+  return new Uint8Array(value);
+}
+
+function assertNonEmptyBytes(value: Uint8Array, label: string): void {
+  if (!(value instanceof Uint8Array) || value.length === 0) {
+    throw new Error(`${label} must be a non-empty Uint8Array`);
+  }
+}
+
+export function buildGroth16WitnessPlan(opts: Groth16WitnessBuildOptions): Groth16WitnessPlan {
+  assertNonEmptyBytes(opts.verifyingKey, 'verifyingKey');
+  assertNonEmptyBytes(opts.proof, 'proof');
+  assertNonNegativeInteger(opts.publicInputs.length, 'publicInputs.length');
+
+  if (opts.expectedPublicInputs !== undefined) {
+    assertNonNegativeInteger(opts.expectedPublicInputs, 'expectedPublicInputs');
+    if (opts.publicInputs.length !== opts.expectedPublicInputs) {
+      throw new Error(
+        `publicInputs length mismatch: expected ${opts.expectedPublicInputs}, got ${opts.publicInputs.length}`,
+      );
+    }
+  }
+
+  const publicInputs = opts.publicInputs.map((input, index) => {
+    assertNonEmptyBytes(input, `publicInputs[${index}]`);
+    return cloneBytes(input);
+  });
+
+  const verifyingKey = cloneBytes(opts.verifyingKey);
+  const proof = cloneBytes(opts.proof);
+  const nPublicInputs = publicInputs.length;
+
+  return {
+    precompile: 'groth16',
+    tag: OP_ZK_PRECOMPILE_GROTH16_TAG,
+    pushOrder: [
+      ...publicInputs
+        .map((input, index) => ({ kind: 'bytes', label: `publicInput[${index}]`, bytes: input } as const))
+        .reverse(),
+      { kind: 'int', label: 'nPublicInputs', value: nPublicInputs },
+      { kind: 'bytes', label: 'proof', bytes: proof },
+      { kind: 'bytes', label: 'verifyingKey', bytes: verifyingKey },
+    ],
+    stackTopToBottom: [
+      { kind: 'int', label: 'tag', value: OP_ZK_PRECOMPILE_GROTH16_TAG },
+      { kind: 'bytes', label: 'verifyingKey', bytes: cloneBytes(verifyingKey) },
+      { kind: 'bytes', label: 'proof', bytes: cloneBytes(proof) },
+      { kind: 'int', label: 'nPublicInputs', value: nPublicInputs },
+      ...publicInputs.map((input, index) => ({ kind: 'bytes', label: `publicInput[${index}]`, bytes: cloneBytes(input) } as const)),
+    ],
+  };
+}

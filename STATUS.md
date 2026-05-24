@@ -4,7 +4,7 @@
 PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
 PHASE_2_STATUS: IN_PROGRESS (monorepo scaffold landed; 12 Phase-3 patterns scaffolded; runtime harness live)
 PHASE_4_STATUS: IN_PROGRESS (KCC20 asset contract scaffolded as 4.1; KCC20Ownable, KCC20Pausable, KCC20Capped, and KCC20Vesting controllers scaffolded as 4.2/4.3/4.4/4.5)
-PHASE_5_STATUS: DESIGN ONLY UPSTREAM / LOCAL PATCH LANE READY (4 patterns specified in docs/patterns/zk/; upstream compilation still blocked on silverscript-lang exposing OpZkPrecompile, but OpenSilver now has a validated local patch/apply/smoke-test flow)
+PHASE_5_STATUS: DESIGN ONLY UPSTREAM / LOCAL TOOLING READY (4 patterns specified in docs/patterns/zk/; upstream compilation still blocked on silverscript-lang exposing OpZkPrecompile, but OpenSilver now has both a validated local patch/apply/smoke-test flow and a stack-order-safe Groth16 witness-plan helper)
 PATTERNS_COMPLETE: 0/22 (12 Phase-3 scaffolds runtime-verified incl. owner-handoff + finalize_recovery; 5 Phase-4 patterns scaffolded; Phase-5 design-only)
 TESTNET_TXS: []
 DOCS_PAGES: 16 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
@@ -22,6 +22,7 @@ NEXT_PHASE: 5 (turn the validated local OpZkPrecompile patch into the upstream s
 - Repo initialised, MIT-licensed, single commit history.
 - Shared compiler bootstrap landed at `scripts/bootstrap-silverc.sh`; CI and local setup now use the same pinned `silverc` acquisition/build path.
 - Local Phase-5 experimental unblock landed: `patches/silverscript-opzkprecompile.patch` + `scripts/apply-silverscript-opzkprecompile-patch.sh` (`npm run patch:silverc:zk`) apply the RFC patch to the pinned upstream checkout, rebuild `silverc`, and smoke-test a minimal `.sil` using `require(OpZkPrecompile())`.
+- SDK safety rail landed: `buildGroth16WitnessPlan()` in `sdk/src/index.ts` returns canonical push-order + invocation stack views for Groth16 precompile operands, so Phase-5 callers do not hand-roll the verifier stack order.
 - Upstream `kaspanet/silverscript` cloned at `2c46231`. **`cargo test -p silverscript-lang` runs 466 tests across 21 suites with 0 failures** — toolchain confirmed working.
 - KIP-16/17/20/21 fetched from their open PR branches into `references/kips/`. Per-KIP summary in `references/kips/SUMMARY.md`.
 - `docs/DECL.md` (declaration sugar layer) read in full. This is the security-by-construction macro surface OpenSilver patterns target.

@@ -33,20 +33,23 @@ Lifted from `references/kips/SUMMARY.md` and `KIP_REFERENCE.md`:
 4. **TODO(covpp-mainnet) until further notice.** Both precompiles' reference implementations carry "not yet fully audited for mainnet use" comments. Phase 5 patterns are TN12-only by default until those comments come off; Phase 10.3 bug-bounty must explicitly cover precompile-derived findings.
 5. **vProgs is NOT a substitute.** `kaspanet/vprogs` has its own RISC0 zkVM but operates as a separate execution layer that consumes L1 via wRPC. Phase 5 patterns target on-chain L1 verification via `OpZkPrecompile`; they are not vProgs-aware in V1.
 
-## SDK glue (Phase 7 dependency)
+## SDK glue (Phase 5 safety rail)
 
-The `sdk/zk/groth16.ts` module owns the canonical stack-order builder. Pattern authors **must not** push verifier args directly — the helper enforces the order that matches `Groth16Precompile::verify_zk` (uncompressed VK at the top, then compressed proof, then `n_inputs`, then n public inputs in reverse). This eliminates the most likely Phase-5 footgun.
+The Groth16 stack-order helper now lives in `sdk/src/index.ts` as `buildGroth16WitnessPlan()`. Pattern authors **must not** push verifier args directly — the helper fixes the canonical order that matches `Groth16Precompile::verify_zk`: push public inputs in reverse, then `n_inputs`, then compressed proof, then uncompressed verifying key, then push tag `0x20` and invoke `OpZkPrecompile()`.
 
-Shape (intended):
+Current shape:
 
 ```ts
-function buildGroth16Witness(opts: {
-  verifyingKey: Uint8Array;        // uncompressed ark-groth16 VK
-  proof: Uint8Array;               // compressed
-  publicInputs: Uint8Array[];      // each is an Fr (compressed)
-  // The helper validates publicInputs.length == vk's expected input count
-  // (pulled from the deserialized VK) before returning the witness array.
-}): Uint8Array[]
+function buildGroth16WitnessPlan(opts: {
+  verifyingKey: Uint8Array;
+  proof: Uint8Array;
+  publicInputs: Uint8Array[];
+  expectedPublicInputs?: number;
+}): {
+  tag: 0x20;
+  pushOrder: ZkStackSlot[];       // push these, then push tag, then invoke opcode
+  stackTopToBottom: ZkStackSlot[];
+}
 ```
 
-To be implemented as part of the Phase 5 build-out, once at least one pattern has a compiled `.sil` to feed it into.
+Current limitation: the helper validates the explicit `expectedPublicInputs` count when supplied, but does **not** yet deserialize the verifying key to derive the count automatically. That stricter VK-aware validation remains future work once the first compiled Phase-5 contract is wired end-to-end.

@@ -138,7 +138,7 @@ Three unblock paths (in order of preference):
 
 Implementation order once unblocked:
 
-1. **5.1 Verified Computation** — simplest. Pins down the Groth16 stack-order pattern that 5.2–5.4 build on. SDK helper `sdk/zk/groth16.ts` ships alongside.
+1. **5.1 Verified Computation** — simplest. Pins down the Groth16 stack-order pattern that 5.2–5.4 build on. The first SDK safety rail is already landed as `buildGroth16WitnessPlan()` in `sdk/src/index.ts`; next work is to thread that helper into an actual compiled `.sil` contract once the upstream builtin patch is available (or the local patch lane is explicitly used for prototyping).
 2. **5.3 ZK-Verified Oracle** — combines 5.1's Groth16 surface with the HodlVault-style M-of-N committee threshold. Demonstrates composition.
 3. **5.2 Private Asset Transfer** — most ambitious; circuit IS the pattern. Needs a working Groth16 prover for a specific circuit before the covenant is meaningful.
 4. **5.4 Proof-Stitched Multi-Pattern** — the vProgs forward-compat target. Should be LAST; needs 5.1's stack-order pattern stable and battle-tested first.
@@ -146,4 +146,4 @@ Implementation order once unblocked:
 Each implementation needs:
 - `contracts/zk/<name>.sil` (template ready in design doc's "Intended `.sil` shape" section)
 - Runtime test wiring a real Groth16 proof — the harness extension is non-trivial because the proof has to actually verify, so we need either a vendored fixture VK+proof pair or an in-test prover.
-- SDK glue in `sdk/zk/` (canonical stack-order builder per the helper sketch in `docs/patterns/zk/README.md`).
+- SDK glue beyond the current witness-plan helper: VK-aware public-input-count validation, script-emission helpers that turn the witness plan into actual push ops, and any Phase-5 pattern-specific convenience wrappers.
