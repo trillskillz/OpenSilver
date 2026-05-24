@@ -406,6 +406,39 @@ export interface Kcc20DeployFlow<TArtifact = unknown> {
   };
 }
 
+export interface Kcc20AssemblyInputRef {
+  role: 'funding' | 'controller' | 'asset';
+  source: string;
+  amount?: number;
+  covenantId?: string;
+}
+
+export interface Kcc20AssemblyOutputRef {
+  role: 'controller' | 'asset-minter' | 'asset-recipient';
+  amount: number | '<caller-specified>' | '<minted-amount>';
+  owner: string;
+  covenantBound: boolean;
+}
+
+export interface Kcc20TransactionAssembly<TArtifact = unknown> {
+  stage: 'controllerGenesis' | 'assetGenesis' | 'controllerInitialized';
+  entrypoint?: string;
+  requiredSigners: string[];
+  inputs: Kcc20AssemblyInputRef[];
+  outputs: Kcc20AssemblyOutputRef[];
+  compiled: SilvercRunResult<TArtifact>;
+  notes: string[];
+}
+
+export interface Kcc20BroadcastReadyFlow<TArtifact = unknown> {
+  controllerKind: Kcc20ControllerKind;
+  assemblies: {
+    controllerGenesis: Kcc20TransactionAssembly<TArtifact>;
+    assetGenesis: Kcc20TransactionAssembly<TArtifact>;
+    controllerInitialized: Kcc20TransactionAssembly<TArtifact>;
+  };
+}
+
 const KCC20_ASSET_CONTRACT_PATH = 'contracts/tokens/kcc20.sil';
 const KCC20_ASSET_DOC_PATH = 'docs/patterns/tokens/kcc20.md';
 const DEFAULT_SILVERC_BINARY = 'upstream/silverscript/target/debug/silverc';
@@ -986,6 +1019,68 @@ export function buildKcc20DeployFlow<TArtifact = unknown>(
         },
         compileSpec: deploymentBundle.controllerInitialized,
         compiled: compiled.controllerInitialized,
+      },
+    },
+  };
+}
+
+export function buildKcc20BroadcastReadyFlow<TArtifact = unknown>(
+  flow: Kcc20DeployFlow<TArtifact>,
+  options: {
+    controllerFundingSource?: string;
+    controllerFundingAmount?: number;
+    controllerOutpointRef?: string;
+    assetOutpointRef?: string;
+    controllerCovenantId?: string;
+    assetCovenantId?: string;
+    recipientOwner?: string;
+  } = {},
+): Kcc20BroadcastReadyFlow<TArtifact> {
+  const controllerFundingSource = options.controllerFundingSource ?? '<funding-utxo>';
+  const controllerOutpointRef = options.controllerOutpointRef ?? '<controller-genesis-outpoint>';
+  const assetOutpointRef = options.assetOutpointRef ?? '<asset-minter-outpoint>';
+  const controllerCovenantId = options.controllerCovenantId ?? '<controller-covenant-id>';
+  const assetCovenantId = options.assetCovenantId ?? '<asset-covenant-id>';
+  const recipientOwner = options.recipientOwner ?? '<recipient-owner>';
+
+  return {
+    controllerKind: flow.lifecycle.controllerKind,
+    assemblies: {
+      controllerGenesis: {
+        stage: 'controllerGenesis',
+        requiredSigners: flow.stages.controllerGenesis.transaction.requiredSigners,
+        inputs: [{ role: 'funding', source: controllerFundingSource, ...(options.controllerFundingAmount !== undefined ? { amount: options.controllerFundingAmount } : {}) }],
+        outputs: [{ role: 'controller', amount: '<caller-specified>', owner: controllerCovenantId, covenantBound: true }],
+        compiled: flow.stages.controllerGenesis.compiled,
+        notes: flow.stages.controllerGenesis.transaction.notes,
+      },
+      assetGenesis: {
+        stage: 'assetGenesis',
+        ...(flow.stages.assetGenesis.transaction.entrypoint ? { entrypoint: flow.stages.assetGenesis.transaction.entrypoint } : {}),
+        requiredSigners: flow.stages.assetGenesis.transaction.requiredSigners,
+        inputs: [{ role: 'controller', source: controllerOutpointRef, covenantId: controllerCovenantId }],
+        outputs: [
+          { role: 'asset-minter', amount: 0, owner: controllerCovenantId, covenantBound: true },
+          { role: 'controller', amount: '<caller-specified>', owner: assetCovenantId, covenantBound: true },
+        ],
+        compiled: flow.stages.assetGenesis.compiled,
+        notes: flow.stages.assetGenesis.transaction.notes,
+      },
+      controllerInitialized: {
+        stage: 'controllerInitialized',
+        ...(flow.stages.controllerInitialized.transaction.entrypoint ? { entrypoint: flow.stages.controllerInitialized.transaction.entrypoint } : {}),
+        requiredSigners: flow.stages.controllerInitialized.transaction.requiredSigners,
+        inputs: [
+          { role: 'asset', source: assetOutpointRef, covenantId: assetCovenantId },
+          { role: 'controller', source: controllerOutpointRef, covenantId: controllerCovenantId },
+        ],
+        outputs: [
+          { role: 'asset-minter', amount: '<caller-specified>', owner: controllerCovenantId, covenantBound: true },
+          { role: 'asset-recipient', amount: '<minted-amount>', owner: recipientOwner, covenantBound: true },
+          { role: 'controller', amount: '<caller-specified>', owner: assetCovenantId, covenantBound: true },
+        ],
+        compiled: flow.stages.controllerInitialized.compiled,
+        notes: flow.transactions.mint.notes,
       },
     },
   };

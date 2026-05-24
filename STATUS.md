@@ -124,7 +124,8 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
   - compile/deploy spec bundles for controller pre-init, asset genesis, initialized controller state, and mint continuations against the pinned `upstream/silverscript/target/debug/silverc`
   - a real TS-side `silverc` wrapper (`buildSilvercCommandPlan` + `runSilvercCompileSpec`) that writes ctor-args JSON, executes the compiler, and parses the emitted JSON artifact
   - deploy-ready compiled flow assembly (`buildKcc20DeployFlow`) that combines lifecycle planning, transaction shapes, compile specs, and wrapper-produced artifacts into one object
-- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is expanding the new deploy-flow layer into fuller broadcaster/deployer integration.
+  - broadcast-ready transaction assembly inputs (`buildKcc20BroadcastReadyFlow`) that map compiled stages into named input/output/signer payloads for future Kaspa transaction builders
+- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is swapping these broadcast-ready assembly objects into a real Kaspa transaction builder/broadcaster integration.
 
 ## Phase 4 — KCC20 token patterns (current)
 

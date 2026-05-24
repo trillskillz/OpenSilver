@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   KCC20_IDENTIFIER_TYPE,
   buildKcc20AssetConstructorArgs,
+  buildKcc20BroadcastReadyFlow,
   buildKcc20ControllerConstructorArgs,
   buildKcc20ControllerState,
   buildKcc20DeployFlow,
@@ -308,5 +309,28 @@ describe('kcc20 sdk helpers', () => {
     const assetPrinted = JSON.stringify(flow.stages.assetGenesis.compiled.artifact);
     expect(controllerPrinted).toContain('pause');
     expect(assetPrinted).toContain('IDENTIFIER_COVENANT_ID');
+
+    const broadcastReady = buildKcc20BroadcastReadyFlow(flow, {
+      controllerFundingSource: 'funding:0',
+      controllerFundingAmount: 100000,
+      controllerOutpointRef: 'controller:0',
+      assetOutpointRef: 'asset:0',
+      controllerCovenantId: 'aa'.repeat(32),
+      assetCovenantId: 'bb'.repeat(32),
+      recipientOwner: 'cc'.repeat(32),
+    });
+
+    expect(broadcastReady.controllerKind).toBe('pausable');
+    expect(broadcastReady.assemblies.controllerGenesis.inputs).toEqual([{ role: 'funding', source: 'funding:0', amount: 100000 }]);
+    expect(broadcastReady.assemblies.assetGenesis.inputs).toEqual([{ role: 'controller', source: 'controller:0', covenantId: 'aa'.repeat(32) }]);
+    expect(broadcastReady.assemblies.controllerInitialized.outputs.map((output) => output.role)).toEqual([
+      'asset-minter',
+      'asset-recipient',
+      'controller',
+    ]);
+    expect(broadcastReady.assemblies.controllerInitialized.outputs[1]).toMatchObject({
+      owner: 'cc'.repeat(32),
+      amount: '<minted-amount>',
+    });
   });
 });
