@@ -5,6 +5,7 @@ import {
   buildKcc20ControllerConstructorArgs,
   buildKcc20ControllerState,
   buildKcc20LifecyclePlan,
+  buildKcc20LifecycleTransactionPlans,
   getKcc20ControllerPaths,
   listPatternsByPhase,
 } from '../sdk/src/index.js';
@@ -147,5 +148,43 @@ describe('kcc20 sdk helpers', () => {
         maxCovenantOutputs: 2,
       }),
     ).toEqual(['77'.repeat(32), 0, 0x02, true, 2, 2]);
+  });
+
+  it('builds transaction-shape helpers for lifecycle flows', () => {
+    const plans = buildKcc20LifecycleTransactionPlans(
+      {
+        kind: 'vesting',
+        admin: '11'.repeat(32),
+        beneficiary: '22'.repeat(32),
+        totalAllocation: 500,
+        cliffTime: 100,
+        period: 10,
+        releasePerPeriod: 50,
+      },
+      template,
+    );
+
+    expect(plans.controllerGenesis).toMatchObject({
+      kind: 'controller-genesis',
+      contractPath: 'contracts/tokens/kcc20-vesting.sil',
+      inputs: [{ role: 'funding', covenantBound: false }],
+      outputs: [{ role: 'controller', covenantBound: true, amountSource: 'caller-specified' }],
+      requiredSigners: [],
+    });
+
+    expect(plans.assetGenesis).toMatchObject({
+      kind: 'asset-genesis',
+      entrypoint: 'init',
+      requiredSigners: ['controller admin'],
+    });
+    expect(plans.assetGenesis.outputs.map((output) => output.role)).toEqual(['asset-minter', 'controller']);
+
+    expect(plans.mint).toMatchObject({
+      kind: 'mint',
+      entrypoint: 'mint',
+      requiredSigners: ['vesting beneficiary'],
+    });
+    expect(plans.mint.inputs.map((input) => input.role)).toEqual(['asset', 'controller']);
+    expect(plans.mint.outputs.map((output) => output.role)).toEqual(['asset-minter', 'asset-recipient', 'controller']);
   });
 });

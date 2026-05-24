@@ -323,6 +323,35 @@ export interface Kcc20LifecyclePlan {
   steps: Kcc20LifecycleStep[];
 }
 
+export interface Kcc20TransactionInputPlan {
+  role: 'funding' | 'controller' | 'asset';
+  covenantBound: boolean;
+  description: string;
+}
+
+export interface Kcc20TransactionOutputPlan {
+  role: 'controller' | 'asset-minter' | 'asset-recipient';
+  covenantBound: boolean;
+  amountSource: 'fixed-zero' | 'caller-specified' | 'minted-amount';
+  description: string;
+}
+
+export interface Kcc20TransactionPlan {
+  kind: 'controller-genesis' | 'asset-genesis' | 'mint';
+  contractPath: string;
+  entrypoint?: string;
+  inputs: Kcc20TransactionInputPlan[];
+  outputs: Kcc20TransactionOutputPlan[];
+  requiredSigners: string[];
+  notes: string[];
+}
+
+export interface Kcc20LifecycleTransactionPlans {
+  controllerGenesis: Kcc20TransactionPlan;
+  assetGenesis: Kcc20TransactionPlan;
+  mint: Kcc20TransactionPlan;
+}
+
 const KCC20_ASSET_CONTRACT_PATH = 'contracts/tokens/kcc20.sil';
 const KCC20_ASSET_DOC_PATH = 'docs/patterns/tokens/kcc20.md';
 
@@ -546,6 +575,126 @@ export function buildKcc20LifecyclePlan(
         requires: ['asset covenant ID', 'controller state transition', 'recipient state output'],
       },
     ],
+  };
+}
+
+function getKcc20MintSignerRoles(config: Kcc20ControllerConfig): string[] {
+  switch (config.kind) {
+    case 'ownable':
+    case 'pausable':
+    case 'capped':
+      return ['controller admin'];
+    case 'vesting':
+      return ['vesting beneficiary'];
+  }
+}
+
+export function buildKcc20LifecycleTransactionPlans(
+  controller: Kcc20ControllerConfig,
+  template: Kcc20TemplateParts,
+  options: {
+    placeholderKcc20Covid?: string;
+    maxCovenantInputs?: number;
+    maxCovenantOutputs?: number;
+  } = {},
+): Kcc20LifecycleTransactionPlans {
+  const lifecycle = buildKcc20LifecyclePlan(controller, template, options);
+
+  return {
+    controllerGenesis: {
+      kind: 'controller-genesis',
+      contractPath: lifecycle.paths.controller,
+      inputs: [
+        {
+          role: 'funding',
+          covenantBound: false,
+          description: 'Plain funding UTXO used to create the uninitialized controller covenant output.',
+        },
+      ],
+      outputs: [
+        {
+          role: 'controller',
+          covenantBound: true,
+          amountSource: 'caller-specified',
+          description: 'Uninitialized controller output whose covenant ID becomes the stable controller identity.',
+        },
+      ],
+      requiredSigners: [],
+      notes: ['No covenant entrypoint runs yet; this step only establishes the controller covenant ID.'],
+    },
+    assetGenesis: {
+      kind: 'asset-genesis',
+      contractPath: lifecycle.paths.controller,
+      entrypoint: 'init',
+      inputs: [
+        {
+          role: 'controller',
+          covenantBound: true,
+          description: 'Spend the uninitialized controller genesis output.',
+        },
+      ],
+      outputs: [
+        {
+          role: 'asset-minter',
+          covenantBound: true,
+          amountSource: 'fixed-zero',
+          description: 'Zero-amount KCC20 minter branch owned by the controller covenant ID.',
+        },
+        {
+          role: 'controller',
+          covenantBound: true,
+          amountSource: 'caller-specified',
+          description: 'Initialized controller state rebound to the newly created asset covenant ID.',
+        },
+      ],
+      requiredSigners: ['controller admin'],
+      notes: [
+        'Controller constructor args must include template parts for validateOutputStateWithTemplate.',
+        'The first output covenant ID becomes kcc20Covid inside the controller state.',
+      ],
+    },
+    mint: {
+      kind: 'mint',
+      contractPath: lifecycle.paths.controller,
+      entrypoint: 'mint',
+      inputs: [
+        {
+          role: 'asset',
+          covenantBound: true,
+          description: 'Current KCC20 minter branch input proving asset-side mint authorization.',
+        },
+        {
+          role: 'controller',
+          covenantBound: true,
+          description: 'Controller input enforcing issuance policy for the selected variant.',
+        },
+      ],
+      outputs: [
+        {
+          role: 'asset-minter',
+          covenantBound: true,
+          amountSource: 'caller-specified',
+          description: 'Continued KCC20 minter branch preserving controller ownership.',
+        },
+        {
+          role: 'asset-recipient',
+          covenantBound: true,
+          amountSource: 'minted-amount',
+          description: 'Fresh recipient asset branch holding the newly minted tokens.',
+        },
+        {
+          role: 'controller',
+          covenantBound: true,
+          amountSource: 'caller-specified',
+          description: 'Next controller state after pause/cap/ownership/vesting policy checks.',
+        },
+      ],
+      requiredSigners: getKcc20MintSignerRoles(controller),
+      notes: [
+        'The KCC20 asset validates supply rules and recipient/minter output templates.',
+        'The controller validates the issuance policy and must stay bound to the same asset covenant ID.',
+      ],
+    },
   };
 }
 
