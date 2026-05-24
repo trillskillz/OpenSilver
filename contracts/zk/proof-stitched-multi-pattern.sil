@@ -1,0 +1,94 @@
+pragma silverscript ^0.1.0;
+
+// Pattern 5.4 — Proof-Stitched Multi-Pattern (v1).
+//
+// COMPILE STATUS: requires the OpenSilver Phase-5 compiler patch
+// (`npm run patch:silverc:zk`). See `contracts/zk/verified-computation.sil`
+// for the unblock-path story.
+//
+// What this v1 does:
+//   Demonstrates the KIP-20 covenant-context composition idiom for ZK:
+//   N covenant inputs share the same `covenant_id`. The LEADER input
+//   (the one at the lowest input index sharing the cov_id) runs the
+//   expensive Groth16 verification once. DELEGATE inputs at the other
+//   positions skip the verification entirely — they trust the leader's
+//   work via the shared cov-id binding.
+//
+//   The economic win: the per-recipient Groth16 cost amortises across
+//   all N inputs. For a 32-input batch, the cost-per-recipient is
+//   `Groth16_cost / 32` ≈ 3× ECDSA — affordable at scale.
+//
+// What this v1 does NOT do:
+//   - No per-recipient share decoding from public inputs. The headline
+//     design ties tx.outputs[i].value/scriptPubKey to slices of
+//     `public_inputs_concat`. v1 keeps the recipient deploy-time
+//     static and routes ALL inputs' value to that single recipient.
+//     This makes the test setup tractable (one fixture vector, no
+//     custom prover) while preserving the leader/delegate split that
+//     IS the interesting architectural piece.
+//   - No batched payout. v1 makes each input pay its own value minus
+//     fee independently. The full design unifies this into a single
+//     N-recipient tx output set; that's a separate runtime-test
+//     extension once we have a real per-recipient circuit.
+//
+// Leader-position convention (per KIP-20 architectural patterns):
+//   The LEADER is whichever input has the LOWEST index among all
+//   inputs sharing this covenant_id. The leader's script computes
+//   `OpCovInputIdx(cov_id, 0)` to find that position, and requires
+//   `this.activeInputIndex == that lowest index`. The delegate's
+//   script requires the OPPOSITE — `this.activeInputIndex !=` the
+//   lowest index. This makes the role unambiguous at script-eval time.
+
+contract ProofStitchedMultiPattern(byte[] init_verifying_key, pubkey init_recipient) {
+    byte[] verifying_key = init_verifying_key;
+    pubkey recipient = init_recipient;
+
+    function requireExactPayout(pubkey destination) {
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        // tx.outputs[this.activeInputIndex] pairs the input with a
+        // same-indexed output — the simplest 1:1 batch shape.
+        require(tx.outputs[this.activeInputIndex].value == amount);
+        require(tx.outputs[this.activeInputIndex].scriptPubKey == byte[](destinationLock));
+    }
+
+    function requireSharedCovenantContext() {
+        byte[32] my_cov_id = OpInputCovenantId(this.activeInputIndex);
+        int cov_input_count = OpCovInputCount(my_cov_id);
+        // The whole point of this pattern is amortising across MULTIPLE
+        // inputs sharing the cov_id. Single-input invocations should
+        // use Pattern 5.1 Verified Computation directly.
+        require(cov_input_count >= 2);
+    }
+
+    // Leader entrypoint. Runs the expensive Groth16 verification once;
+    // also handles its own input's payout.
+    entrypoint function leader_release(
+        byte[] proof,
+        byte[32] pi0,
+        byte[32] pi1,
+        byte[32] pi2,
+        byte[32] pi3,
+        byte[32] pi4
+    ) {
+        requireSharedCovenantContext();
+        byte[32] my_cov_id = OpInputCovenantId(this.activeInputIndex);
+        int leader_idx = OpCovInputIdx(my_cov_id, 0);
+        // The LEADER is the lowest-indexed cov-bound input.
+        require(this.activeInputIndex == leader_idx);
+        require(OpGroth16Verify(verifying_key, proof, [pi0, pi1, pi2, pi3, pi4]));
+        requireExactPayout(recipient);
+    }
+
+    // Delegate entrypoint. Skips the proof verification entirely — the
+    // leader did it for the whole batch. The delegate only proves its
+    // own input is in the same cov-id set AND is NOT the leader.
+    entrypoint function delegate_release() {
+        requireSharedCovenantContext();
+        byte[32] my_cov_id = OpInputCovenantId(this.activeInputIndex);
+        int leader_idx = OpCovInputIdx(my_cov_id, 0);
+        require(this.activeInputIndex != leader_idx);
+        requireExactPayout(recipient);
+    }
+}

@@ -17,17 +17,19 @@
 use std::fs;
 use std::path::PathBuf;
 
+use kaspa_consensus_core::Hash;
 use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::mass::units::SigopCount;
 use kaspa_consensus_core::tx::{
-    MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput,
-    TransactionOutpoint, TransactionOutput, UtxoEntry,
+    CovenantBinding, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId,
+    TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use kaspa_txscript::caches::Cache;
+use kaspa_txscript::covenants::CovenantsContext;
 use kaspa_txscript::opcodes::codes::OpCheckSig;
 use kaspa_txscript::script_builder::ScriptBuilder;
-use kaspa_txscript::{EngineCtx, EngineFlags, TxScriptEngine};
+use kaspa_txscript::{EngineCtx, EngineFlags, TxScriptEngine, pay_to_script_hash_script};
 use kaspa_txscript_errors::TxScriptError;
 use rand::thread_rng;
 use secp256k1::{Keypair, Message, Secp256k1, SecretKey};
@@ -103,6 +105,32 @@ fn execute_plain_input(tx: Transaction, utxo_entry: UtxoEntry) -> Result<(), TxS
     vm.execute()
 }
 
+/// Execute one input of a multi-input transaction with full covenant
+/// context built from ALL utxo entries. Used by Pattern 5.4 to verify
+/// both leader and delegate paths in the same proof-stitched batch.
+fn execute_multi_input_with_covenants(
+    tx: Transaction,
+    utxo_entries: Vec<UtxoEntry>,
+    input_index: usize,
+) -> Result<(), TxScriptError> {
+    let reused_values = SigHashReusedValuesUnsync::new();
+    let sig_cache = Cache::new(10_000);
+    let input = tx.inputs[input_index].clone();
+    let utxo_entry = utxo_entries[input_index].clone();
+    let populated_tx = PopulatedTransaction::new(&tx, utxo_entries);
+    let cov_ctx = CovenantsContext::from_tx(&populated_tx).map_err(TxScriptError::from)?;
+
+    let mut vm = TxScriptEngine::from_transaction_input(
+        &populated_tx,
+        &input,
+        input_index,
+        &utxo_entry,
+        EngineCtx::new(&sig_cache).with_reused(&reused_values).with_covenants_ctx(&cov_ctx),
+        EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() },
+    );
+    vm.execute()
+}
+
 fn compile_verified_computation(
     verifying_key: &[u8],
     recipient_pk: &[u8],
@@ -119,6 +147,16 @@ fn compile_verified_computation(
     let leaked_args: &'static [Expr<'static>] = Vec::leak(args);
     compile_contract(leaked_source, leaked_args, CompileOptions::default())
         .expect("verified-computation.sil compiles under the patched silverc")
+}
+
+fn compile_proof_stitched(verifying_key: &[u8], recipient_pk: &[u8]) -> CompiledContract<'static> {
+    let source = fs::read_to_string(repo_root().join("contracts/zk/proof-stitched-multi-pattern.sil"))
+        .expect("contract source reads");
+    let args: Vec<Expr<'static>> = vec![bytes_to_expr(verifying_key), bytes_to_expr(recipient_pk)];
+    let leaked_source: &'static str = Box::leak(source.into_boxed_str());
+    let leaked_args: &'static [Expr<'static>] = Vec::leak(args);
+    compile_contract(leaked_source, leaked_args, CompileOptions::default())
+        .expect("proof-stitched-multi-pattern.sil compiles under the patched silverc")
 }
 
 fn compile_zk_verified_oracle(
@@ -564,4 +602,217 @@ fn zk_verified_oracle_rejects_quorum_but_tampered_proof() {
     }
 
     let _ = g3_pk;
+}
+
+// ─── Pattern 5.4: Proof-Stitched Multi-Pattern ─────────────────────────────
+//
+// Two-input batch sharing one covenant_id. Leader runs OpGroth16Verify
+// once; delegate trusts via covenant-id context. Both inputs each pay
+// their own value (minus fee) to the deploy-time recipient. The economic
+// win — amortising Groth16 cost across N inputs — comes from the leader
+// being the only input that runs the expensive verifier.
+
+fn build_proof_stitched_two_input_tx(
+    compiled_script: &[u8],
+    recipient_pk: &[u8],
+    input_values: [u64; 2],
+    outpoint_markers: [u8; 2],
+    cov_id: Hash,
+) -> (Transaction, Vec<UtxoEntry>) {
+    let inputs = vec![
+        TransactionInput {
+            previous_outpoint: TransactionOutpoint {
+                transaction_id: TransactionId::from_bytes([outpoint_markers[0]; 32]),
+                index: 0,
+            },
+            signature_script: vec![],
+            sequence: 0,
+            mass: SigopCount(1).into(),
+        },
+        TransactionInput {
+            previous_outpoint: TransactionOutpoint {
+                transaction_id: TransactionId::from_bytes([outpoint_markers[1]; 32]),
+                index: 0,
+            },
+            signature_script: vec![],
+            sequence: 0,
+            mass: SigopCount(1).into(),
+        },
+    ];
+
+    // Output[i] pairs with input[i] per `requireExactPayout`'s
+    // tx.outputs[this.activeInputIndex] convention.
+    let outputs = (0..2)
+        .map(|i| TransactionOutput {
+            value: input_values[i] - 1_000,
+            script_public_key: ScriptPublicKey::new(0, build_p2pk_script(recipient_pk).into()),
+            covenant: None,
+        })
+        .collect();
+
+    let tx = Transaction::new(1, inputs, outputs, 0, Default::default(), 0, vec![]);
+
+    // Both inputs spend UtxoEntries pinned to the SAME cov_id with the
+    // scriptPubKey set DIRECTLY to the compiled script (not P2SH-wrapped).
+    // For P2SH spends, the sigscript would need to push the redeem-script
+    // bytes after the args; for direct-script spends, the engine runs the
+    // utxo's scriptPubKey straight after the sigscript pushes its args.
+    // Matches the verified-computation + zk-verified-oracle harness shape.
+    let utxos = (0..2)
+        .map(|i| {
+            UtxoEntry::new(
+                input_values[i],
+                ScriptPublicKey::new(0, compiled_script.to_vec().into()),
+                0,
+                false,
+                Some(cov_id),
+            )
+        })
+        .collect();
+
+    (tx, utxos)
+}
+
+#[test]
+fn proof_stitched_leader_delegate_two_input_batch_passes() {
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let proof = decode_hex(&fixture.proof_compressed_hex);
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let recipient = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+    let compiled = compile_proof_stitched(&verifying_key, &recipient_pk);
+
+    let cov_id = Hash::from_bytes(*b"PSMP_COVENANT_ID_00000000000000z");
+    let (tx, utxos) = build_proof_stitched_two_input_tx(
+        &compiled.script,
+        &recipient_pk,
+        [5_000, 7_000],
+        [0xC0, 0xC1],
+        cov_id,
+    );
+
+    // Input 0 is the LEADER (lowest cov-bound index). Its sigscript
+    // selects leader_release(proof, pi0..pi4).
+    let mutable_for_sigscript = MutableTransaction::with_entries(tx.clone(), utxos.clone());
+    let leader_sigscript = compiled
+        .build_sig_script(
+            "leader_release",
+            vec![
+                proof.clone().into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+            ],
+        )
+        .expect("leader_release sigscript builds");
+    let delegate_sigscript = compiled
+        .build_sig_script("delegate_release", vec![])
+        .expect("delegate_release sigscript builds");
+    let _ = mutable_for_sigscript;
+
+    let mut tx_with_sigs = tx;
+    tx_with_sigs.inputs[0].signature_script = leader_sigscript;
+    tx_with_sigs.inputs[1].signature_script = delegate_sigscript;
+
+    // Execute BOTH inputs through the engine. Both must accept for the
+    // batch to be valid. The leader does the expensive proof verification;
+    // the delegate just runs the cheap cov-context + payout checks.
+    let leader_result = execute_multi_input_with_covenants(tx_with_sigs.clone(), utxos.clone(), 0);
+    assert!(leader_result.is_ok(), "leader input failed: {}", leader_result.unwrap_err());
+
+    let delegate_result = execute_multi_input_with_covenants(tx_with_sigs, utxos, 1);
+    assert!(delegate_result.is_ok(), "delegate input failed: {}", delegate_result.unwrap_err());
+}
+
+#[test]
+fn proof_stitched_delegate_at_leader_position_rejected() {
+    // The delegate path requires this.activeInputIndex != leader_idx.
+    // If a sigscript with delegate_release runs at input 0 (which IS
+    // the leader position because it's the lowest cov-bound index),
+    // the inequality fails.
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let recipient = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+    let compiled = compile_proof_stitched(&verifying_key, &recipient_pk);
+
+    let cov_id = Hash::from_bytes(*b"PSMP_COVENANT_ID_00000000000001z");
+    let (tx, utxos) = build_proof_stitched_two_input_tx(
+        &compiled.script,
+        &recipient_pk,
+        [5_000, 7_000],
+        [0xC2, 0xC3],
+        cov_id,
+    );
+
+    let delegate_sigscript = compiled
+        .build_sig_script("delegate_release", vec![])
+        .expect("delegate_release sigscript builds");
+
+    let mut tx_with_sigs = tx;
+    // Put delegate_release at input 0 (the leader slot) — must fail.
+    tx_with_sigs.inputs[0].signature_script = delegate_sigscript.clone();
+    tx_with_sigs.inputs[1].signature_script = delegate_sigscript;
+
+    let err = execute_multi_input_with_covenants(tx_with_sigs, utxos, 0)
+        .expect_err("delegate at leader position must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+#[test]
+fn proof_stitched_leader_rejects_tampered_proof() {
+    // Leader at correct position, but proof is tampered. The
+    // OpGroth16Verify gate fires.
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let mut proof = decode_hex(&fixture.proof_compressed_hex);
+    proof[0] ^= 0xff;
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let recipient = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+    let compiled = compile_proof_stitched(&verifying_key, &recipient_pk);
+
+    let cov_id = Hash::from_bytes(*b"PSMP_COVENANT_ID_00000000000002z");
+    let (tx, utxos) = build_proof_stitched_two_input_tx(
+        &compiled.script,
+        &recipient_pk,
+        [5_000, 7_000],
+        [0xC4, 0xC5],
+        cov_id,
+    );
+
+    let leader_sigscript = compiled
+        .build_sig_script(
+            "leader_release",
+            vec![
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+            ],
+        )
+        .expect("leader_release sigscript builds");
+    let delegate_sigscript = compiled
+        .build_sig_script("delegate_release", vec![])
+        .expect("delegate_release sigscript builds");
+
+    let mut tx_with_sigs = tx;
+    tx_with_sigs.inputs[0].signature_script = leader_sigscript;
+    tx_with_sigs.inputs[1].signature_script = delegate_sigscript;
+
+    let err = execute_multi_input_with_covenants(tx_with_sigs, utxos, 0)
+        .expect_err("tampered leader proof must fail");
+    match err {
+        TxScriptError::ZkIntegrity(_) | TxScriptError::VerifyError | TxScriptError::EvalFalse => {}
+        other => panic!("unexpected error variant: {other:?}"),
+    }
 }

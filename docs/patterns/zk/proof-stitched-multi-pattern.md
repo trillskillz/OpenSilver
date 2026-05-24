@@ -1,6 +1,22 @@
 # Proof-Stitched Multi-Pattern — Pattern 5.4
 
-Status: DESIGN. Blocked on silverscript-lang exposing `OpZkPrecompile` and on KIP-21 sequencing-commitment lane stability.
+Status: **v1 SCAFFOLDED + RUNTIME-VERIFIED (local patch lane)**. Contract at `contracts/zk/proof-stitched-multi-pattern.sil` compiles via `npm run patch:silverc:zk`. Three multi-input runtime tests in `runtime-tests/tests/zk_runtime.rs`:
+
+- `proof_stitched_leader_delegate_two_input_batch_passes` — two inputs sharing one `covenant_id`. Input 0 (the leader, lowest cov-bound index per KIP-20 convention) executes `leader_release` which runs `OpGroth16Verify` once. Input 1 (the delegate) executes `delegate_release` which only checks the shared cov-context AND that its own position is NOT the leader's. Both inputs each pay their input value (minus 1000 sompi fee) to the deploy-time recipient. The expensive Groth16 verification runs ONCE for the whole batch.
+- `proof_stitched_delegate_at_leader_position_rejected` — `delegate_release` running at the leader's slot fails the `this.activeInputIndex != leader_idx` gate.
+- `proof_stitched_leader_rejects_tampered_proof` — leader at correct position, but the proof's first byte is flipped → `OpGroth16Verify` fails with `ZkIntegrity`.
+
+**v1 limitations honestly documented:**
+- **Single recipient.** The `recipient` pubkey is deploy-time static; all inputs route to that same recipient. The full design ties per-input recipient + amount to slices of `public_inputs_concat`, but v1 keeps the recipient fixed so we can reuse the existing Groth16 fixture without writing a per-recipient circuit.
+- **No batched payout shape decoding.** Each input pays independently; there's no single N-recipient output set unified by a circuit. That's a separate runtime-test extension once a real per-recipient prover exists.
+
+Runtime test harness extension required (new this round): `execute_multi_input_with_covenants(tx, utxo_entries, input_index)` builds a `PopulatedTransaction` with all utxos, calls `CovenantsContext::from_tx` so the engine sees the shared cov-id input set, then executes ONE input. Tests call it twice (once per input) and assert BOTH pass for the batch to be valid.
+
+The leader/delegate convention follows KIP-20's architectural patterns directly:
+- LEADER = lowest-indexed input sharing the cov_id, asserted via `OpCovInputIdx(cov_id, 0) == this.activeInputIndex`.
+- DELEGATE = any other input sharing the cov_id, asserted via `OpCovInputIdx(cov_id, 0) != this.activeInputIndex`.
+
+Cost amortisation: each delegate replaces a full `OpGroth16Verify` (`Gram(140 * 1000)`) with just cheap cov-context queries (`OpInputCovenantId` + `OpCovInputCount` + `OpCovInputIdx` ≈ 30 SU). For a 32-input batch, per-recipient cost drops from 140k SU to roughly 4.4k SU — the headline economic property of this pattern.
 
 ## Summary
 

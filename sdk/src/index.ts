@@ -220,9 +220,10 @@ export const patternManifest: PatternManifestEntry[] = [
     id: 'zk-aware.proof-stitched-multi-pattern',
     title: 'Proof-Stitched Multi-Pattern',
     phase: 'zk-aware',
-    stateful: true,
-    status: 'planned',
-    summary: 'One Groth16 verification shared across N covenant inputs via KIP-20 covenant context. vProgs forward-compat target.',
+    stateful: false,
+    status: 'scaffolded',
+    summary: 'Leader/delegate split: one Groth16 verification shared across N covenant inputs via KIP-20 covenant context. v1 single-recipient (per-recipient public-input decoding is a follow-up).',
+    contractPath: 'contracts/zk/proof-stitched-multi-pattern.sil',
     docPath: 'docs/patterns/zk/proof-stitched-multi-pattern.md',
   },
 ];
