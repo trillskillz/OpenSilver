@@ -11,10 +11,10 @@ DOCS_PAGES: 16 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro, docs/patterns/zk/README + 4 ZK pattern designs)
-TESTS_PASSING: 466/466 upstream + 23/23 vitest files (32/32 tests) + 57/57 cargo runtime suite (50 core + 7 kcc20, 0 ignored)
+TESTS_PASSING: 466/466 upstream + 24/24 vitest files (43/43 tests) + 57/57 cargo runtime suite (50 core + 7 kcc20, 0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3/4. Phase 5 blocked on silverscript-lang exposing OpZkPrecompile builtin (KIP-16 opcode 0xa6 — engine side already shipped via rusty-kaspa#775; compile-side not wired through yet at pinned commit 2c46231).
-NEXT_PHASE: 4 (finish KCC20 SDK glue + extract real script/covenant output fields from silverc artifacts) or upstream patch to silverscript-lang adding OpZkPrecompile builtin to unblock Phase 5
+NEXT_PHASE: 5 (land upstream silverscript-lang patch adding OpZkPrecompile builtin, then implement Pattern 5.1 Verified Computation). The honest-limitation gap in Phase 4 (covenant-output materialization) is now closed; SDK + integrations exercise real silverc compile end-to-end.
 ```
 
 ## What's done
