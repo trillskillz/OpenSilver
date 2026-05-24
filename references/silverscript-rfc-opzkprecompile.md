@@ -125,7 +125,11 @@ And matching `examples_tests.rs::test_examples_compile` should add `zk_minimal.s
 
 Low for the narrow goal of exposing the builtin name. The change is two one-liners in compile.rs + debug_value_types.rs + one stdlib doc comment. The opcode itself is already audited engine-side; this PR only routes a builtin name to the existing emitter.
 
-**Follow-up caveat discovered during downstream prototyping:** in current SilverScript syntax, a 0-arg builtin exposure alone does not appear sufficient for real contract authoring because the parser rejects raw expression statements that would push verifier operands before `OpZkPrecompile()`. So this PR may need to be paired with either expression statements / explicit push syntax or a higher-arity builtin lowering before downstream projects can write complete ZK-aware contracts in plain `.sil`.
+**Follow-up caveat discovered during downstream prototyping:** in current SilverScript syntax, a 0-arg builtin exposure alone does not appear sufficient for real contract authoring because the parser rejects raw expression statements that would push verifier operands before `OpZkPrecompile()`.
+
+**Positive follow-up result:** the compiler's builtin lowering path itself is fine. `compile_opcode_call()` pushes builtin arguments in source order, then emits the opcode. A local experiment changing the builtin arity to 9 successfully compiled a fixed 5-public-input Groth16-style call of the form `OpZkPrecompile(a, b, c, d, e, 5, proof, vk, 0x20)`. So the remaining problem is surface/API design for variable `n_public_inputs`, not argument ordering inside the compiler.
+
+That means this PR may need to be paired with either expression statements / explicit push syntax or a structured higher-arity builtin lowering before downstream projects can write complete ZK-aware contracts in plain `.sil`.
 
 ## Adoption path for OpenSilver
 
