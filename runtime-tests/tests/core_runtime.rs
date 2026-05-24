@@ -924,22 +924,20 @@ fn vault_release_accepts_quorum_and_beneficiary_after_unlock() {
     let pk3 = kp3.x_only_public_key().0.serialize();
     let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
 
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let pending_owner_zero = vec![0u8; 32];
+    // Vault now uses pubkey + has_pending_owner shape (NUM2BIN-driven, same
+    // as Ownable/SocialRecovery). For tests that don't exercise owner
+    // handoff, has_pending_owner = false and the pending_owner slot uses
+    // owner_pk as an arbitrary 32-byte placeholder.
+    let owner_arg = owner_pk.to_vec();
     let threshold = 2_i64;
     let unlock_time = 10_i64;
 
     let compiled = compile_contract_file(
         "contracts/core/vault.sil",
         vec![
-            owner_hash.into(),
-            pending_owner_zero.into(),
+            owner_arg.clone().into(),
+            Expr::bool(false),
+            owner_arg.into(),
             threshold.into(),
             pk1.to_vec().into(),
             pk2.to_vec().into(),
@@ -1008,22 +1006,16 @@ fn vault_release_rejects_when_beneficiary_signature_swapped() {
     let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
     let attacker_pk = attacker.x_only_public_key().0.serialize();
 
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let pending_owner_zero = vec![0u8; 32];
+    let owner_arg = owner_pk.to_vec();
     let threshold = 2_i64;
     let unlock_time = 10_i64;
 
     let compiled = compile_contract_file(
         "contracts/core/vault.sil",
         vec![
-            owner_hash.into(),
-            pending_owner_zero.into(),
+            owner_arg.clone().into(),
+            Expr::bool(false),
+            owner_arg.into(),
             threshold.into(),
             pk1.to_vec().into(),
             pk2.to_vec().into(),
@@ -1879,21 +1871,16 @@ fn vault_extend_lock_accepts_quorum_with_later_unlock() {
     let pk2 = kp2.x_only_public_key().0.serialize();
     let pk3 = kp3.x_only_public_key().0.serialize();
     let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
+    let owner_arg = owner_pk.to_vec();
 
     let unlock_time = 100_i64;
     let later_unlock = 250_i64;
     let threshold = 2_i64;
 
     let active_args: Vec<Expr<'static>> = vec![
-        owner_hash.clone().into(),
-        vec![0u8; 32].into(),
+        owner_arg.clone().into(),
+        Expr::bool(false),
+        owner_arg.clone().into(),
         threshold.into(),
         pk1.to_vec().into(),
         pk2.to_vec().into(),
@@ -1902,8 +1889,9 @@ fn vault_extend_lock_accepts_quorum_with_later_unlock() {
         beneficiary_pk.to_vec().into(),
     ];
     let next_args: Vec<Expr<'static>> = vec![
-        owner_hash.into(),
-        vec![0u8; 32].into(),
+        owner_arg.clone().into(),
+        Expr::bool(false),
+        owner_arg.into(),
         threshold.into(),
         pk1.to_vec().into(),
         pk2.to_vec().into(),
@@ -2228,13 +2216,7 @@ fn vault_reconfigure_signers_accepts_owner_and_quorum() {
     let new_pk2 = new_kp2.x_only_public_key().0.serialize();
     let new_pk3 = new_kp3.x_only_public_key().0.serialize();
     let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
+    let owner_arg = owner_pk.to_vec();
 
     let unlock_time = 100_i64;
     let active_threshold = 2_i64;
@@ -2243,8 +2225,9 @@ fn vault_reconfigure_signers_accepts_owner_and_quorum() {
     let active = compile_contract_file(
         "contracts/core/vault.sil",
         vec![
-            owner_hash.clone().into(),
-            vec![0u8; 32].into(),
+            owner_arg.clone().into(),
+            Expr::bool(false),
+            owner_arg.clone().into(),
             active_threshold.into(),
             pk1.to_vec().into(),
             pk2.to_vec().into(),
@@ -2256,8 +2239,9 @@ fn vault_reconfigure_signers_accepts_owner_and_quorum() {
     let next = compile_contract_file(
         "contracts/core/vault.sil",
         vec![
-            owner_hash.into(),
-            vec![0u8; 32].into(),
+            owner_arg.clone().into(),
+            Expr::bool(false),
+            owner_arg.into(),
             next_threshold.into(),
             new_pk1.to_vec().into(),
             new_pk2.to_vec().into(),
@@ -2915,6 +2899,337 @@ fn vesting_claim_rejects_pre_cliff() {
     mutable.tx.inputs[0].signature_script = sigscript;
 
     let err = execute_covenant_input(mutable.tx, utxo).expect_err("pre-cliff claim must fail");
+    assert!(
+        matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse | TxScriptError::UnsatisfiedLockTime(_)),
+        "unexpected error: {err:?}"
+    );
+}
+
+// ─── Vault owner-handoff singletons (post pubkey + has_pending_owner refactor)
+//
+// Same shape as Ownable.propose_transfer + accept_transfer: pubkey-typed
+// owner slot, bool flag gates pending state, accept_owner_transfer leaves
+// the pending_owner pubkey slot at its prior value (only the flag flips).
+
+#[test]
+fn vault_propose_owner_transfer_accepts_owner_sig() {
+    let owner = random_keypair();
+    let next_owner = random_keypair();
+    let kp1 = random_keypair();
+    let kp2 = random_keypair();
+    let kp3 = random_keypair();
+    let beneficiary_pk = random_keypair().x_only_public_key().0.serialize().to_vec();
+    let owner_pk = owner.x_only_public_key().0.serialize().to_vec();
+    let next_owner_pk = next_owner.x_only_public_key().0.serialize().to_vec();
+    let pk1 = kp1.x_only_public_key().0.serialize().to_vec();
+    let pk2 = kp2.x_only_public_key().0.serialize().to_vec();
+    let pk3 = kp3.x_only_public_key().0.serialize().to_vec();
+    let unlock_time = 100_i64;
+    let threshold = 2_i64;
+
+    // Active: has_pending=false; Next: has_pending=true with next_owner.
+    let active = compile_contract_file(
+        "contracts/core/vault.sil",
+        vec![
+            owner_pk.clone().into(),
+            Expr::bool(false),
+            owner_pk.clone().into(),
+            threshold.into(),
+            pk1.clone().into(),
+            pk2.clone().into(),
+            pk3.clone().into(),
+            unlock_time.into(),
+            beneficiary_pk.clone().into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/vault.sil",
+        vec![
+            owner_pk.clone().into(),
+            Expr::bool(true),
+            next_owner_pk.clone().into(),
+            threshold.into(),
+            pk1.into(),
+            pk2.into(),
+            pk3.into(),
+            unlock_time.into(),
+            beneficiary_pk.into(),
+        ],
+    );
+
+    let input_value = 10_000u64;
+    let cov_id = ownable_cov_id(0xE2);
+    // propose_owner_transfer uses requireExactContinuationValue: input - 1000.
+    let continuation_value = input_value - 1_000;
+    let output0 = TransactionOutput {
+        value: continuation_value,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xE2; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let owner_sig = schnorr_signature(&mutable, 0, &owner);
+    let sigscript = covenant_sigscript(
+        &active,
+        "propose_owner_transfer",
+        vec![next_owner_pk.into(), owner_pk.into(), owner_sig.into()],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "vault propose_owner_transfer runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn vault_accept_owner_transfer_completes_handoff() {
+    let prev_owner = random_keypair();
+    let new_owner = random_keypair();
+    let kp1 = random_keypair();
+    let kp2 = random_keypair();
+    let kp3 = random_keypair();
+    let beneficiary_pk = random_keypair().x_only_public_key().0.serialize().to_vec();
+    let prev_owner_pk = prev_owner.x_only_public_key().0.serialize().to_vec();
+    let new_owner_pk = new_owner.x_only_public_key().0.serialize().to_vec();
+    let pk1 = kp1.x_only_public_key().0.serialize().to_vec();
+    let pk2 = kp2.x_only_public_key().0.serialize().to_vec();
+    let pk3 = kp3.x_only_public_key().0.serialize().to_vec();
+    let unlock_time = 100_i64;
+    let threshold = 2_i64;
+
+    // Active: has_pending=true with new_owner.
+    // Next: owner = new_owner, has_pending=false, pending slot = new_owner
+    //       (unchanged from prev_state.pending_owner per accept_owner_transfer).
+    let active = compile_contract_file(
+        "contracts/core/vault.sil",
+        vec![
+            prev_owner_pk.into(),
+            Expr::bool(true),
+            new_owner_pk.clone().into(),
+            threshold.into(),
+            pk1.clone().into(),
+            pk2.clone().into(),
+            pk3.clone().into(),
+            unlock_time.into(),
+            beneficiary_pk.clone().into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/vault.sil",
+        vec![
+            new_owner_pk.clone().into(),
+            Expr::bool(false),
+            new_owner_pk.clone().into(),
+            threshold.into(),
+            pk1.into(),
+            pk2.into(),
+            pk3.into(),
+            unlock_time.into(),
+            beneficiary_pk.into(),
+        ],
+    );
+
+    let input_value = 10_000u64;
+    let cov_id = ownable_cov_id(0xE3);
+    let continuation_value = input_value - 1_000;
+    let output0 = TransactionOutput {
+        value: continuation_value,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xE3; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let new_owner_sig = schnorr_signature(&mutable, 0, &new_owner);
+    let sigscript = covenant_sigscript(
+        &active,
+        "accept_owner_transfer",
+        vec![new_owner_pk.into(), new_owner_sig.into()],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "vault accept_owner_transfer runtime failed: {}", result.unwrap_err());
+}
+
+// ─── SocialRecovery.finalize_recovery — closes the last documented coverage gap
+//
+// After the pubkey + has_pending_owner refactor, finalize_recovery promotes
+// the pending owner once `tx.time >= activation_time`. The continuation
+// state has owner = old pending_owner, has_pending = false, and the pending
+// slot keeps its prior value.
+
+#[test]
+fn social_recovery_finalize_accepts_pending_owner_after_activation() {
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let prev_owner = random_keypair();
+    let new_owner = random_keypair();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+    let prev_owner_pk = prev_owner.x_only_public_key().0.serialize().to_vec();
+    let new_owner_pk = new_owner.x_only_public_key().0.serialize().to_vec();
+    let activation_time = 200_i64;
+    let recovery_delay = 50_i64;
+
+    let active = compile_contract_file(
+        "contracts/core/social-recovery.sil",
+        vec![
+            prev_owner_pk.into(),
+            Expr::bool(true),
+            new_owner_pk.clone().into(),
+            2_i64.into(),
+            g1_pk.clone().into(),
+            g2_pk.clone().into(),
+            g3_pk.clone().into(),
+            activation_time.into(),
+            recovery_delay.into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/social-recovery.sil",
+        vec![
+            new_owner_pk.clone().into(),
+            Expr::bool(false),
+            new_owner_pk.clone().into(),
+            2_i64.into(),
+            g1_pk.into(),
+            g2_pk.into(),
+            g3_pk.into(),
+            activation_time.into(),
+            recovery_delay.into(),
+        ],
+    );
+
+    let input_value = 3_000u64;
+    let cov_id = ownable_cov_id(0xC2);
+    let output0 = TransactionOutput {
+        value: input_value - 1_000,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xC2; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    // tx.time = activation_time so `require(tx.time >= activation_time)` holds.
+    let tx = Transaction::new(1, vec![input], vec![output0], activation_time as u64, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let new_owner_sig = schnorr_signature(&mutable, 0, &new_owner);
+    let sigscript = covenant_sigscript(
+        &active,
+        "finalize_recovery",
+        vec![new_owner_pk.into(), new_owner_sig.into()],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "social finalize_recovery runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn social_recovery_finalize_rejects_before_activation() {
+    // Same shape but tx.time below activation_time.
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let prev_owner = random_keypair();
+    let new_owner = random_keypair();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+    let prev_owner_pk = prev_owner.x_only_public_key().0.serialize().to_vec();
+    let new_owner_pk = new_owner.x_only_public_key().0.serialize().to_vec();
+    let activation_time = 500_i64;
+
+    let active = compile_contract_file(
+        "contracts/core/social-recovery.sil",
+        vec![
+            prev_owner_pk.into(),
+            Expr::bool(true),
+            new_owner_pk.clone().into(),
+            2_i64.into(),
+            g1_pk.clone().into(),
+            g2_pk.clone().into(),
+            g3_pk.clone().into(),
+            activation_time.into(),
+            50_i64.into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/social-recovery.sil",
+        vec![
+            new_owner_pk.clone().into(),
+            Expr::bool(false),
+            new_owner_pk.clone().into(),
+            2_i64.into(),
+            g1_pk.into(),
+            g2_pk.into(),
+            g3_pk.into(),
+            activation_time.into(),
+            50_i64.into(),
+        ],
+    );
+
+    let input_value = 3_000u64;
+    let cov_id = ownable_cov_id(0xC3);
+    let output0 = TransactionOutput {
+        value: input_value - 1_000,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xC3; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    // tx.time = 100 < activation_time = 500
+    let tx = Transaction::new(1, vec![input], vec![output0], 100, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let new_owner_sig = schnorr_signature(&mutable, 0, &new_owner);
+    let sigscript = covenant_sigscript(
+        &active,
+        "finalize_recovery",
+        vec![new_owner_pk.into(), new_owner_sig.into()],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_covenant_input(mutable.tx, utxo).expect_err("pre-activation finalize must fail");
     assert!(
         matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse | TxScriptError::UnsatisfiedLockTime(_)),
         "unexpected error: {err:?}"
