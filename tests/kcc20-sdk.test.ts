@@ -4,8 +4,11 @@ import {
   buildKcc20AssetConstructorArgs,
   buildKcc20ControllerConstructorArgs,
   buildKcc20ControllerState,
+  buildKcc20DeploymentBundle,
   buildKcc20LifecyclePlan,
   buildKcc20LifecycleTransactionPlans,
+  buildKcc20MintCompileBundle,
+  getDefaultSilvercBinary,
   getKcc20ControllerPaths,
   listPatternsByPhase,
 } from '../sdk/src/index.js';
@@ -186,5 +189,67 @@ describe('kcc20 sdk helpers', () => {
     });
     expect(plans.mint.inputs.map((input) => input.role)).toEqual(['asset', 'controller']);
     expect(plans.mint.outputs.map((output) => output.role)).toEqual(['asset-minter', 'asset-recipient', 'controller']);
+  });
+
+  it('builds compile/deploy specs for controller deployment and mint continuations', () => {
+    const deployment = buildKcc20DeploymentBundle(
+      {
+        kind: 'capped',
+        admin: '11'.repeat(32),
+        totalCap: 1_000,
+      },
+      template,
+      { mode: 'ast-only' },
+    );
+
+    expect(deployment.controllerPreInit).toMatchObject({
+      binary: getDefaultSilvercBinary(),
+      contractPath: 'contracts/tokens/kcc20-capped.sil',
+      mode: 'ast-only',
+    });
+    expect(deployment.assetGenesis).toMatchObject({
+      contractPath: 'contracts/tokens/kcc20.sil',
+      constructorArgs: ['<controller-covenant-id>', 0, 0x02, true, 2, 2],
+    });
+    expect(deployment.controllerInitialized.constructorArgs.slice(0, 5)).toEqual([
+      '11'.repeat(32),
+      1_000,
+      1_000,
+      '<asset-covenant-id>',
+      true,
+    ]);
+
+    const mintBundle = buildKcc20MintCompileBundle(
+      {
+        kind: 'capped',
+        admin: '11'.repeat(32),
+        totalCap: 1_000,
+      },
+      template,
+      {
+        assetCovenantId: 'aa'.repeat(32),
+        controllerCovenantId: 'bb'.repeat(32),
+        recipientIdentifier: 'cc'.repeat(32),
+        recipientAmount: 75,
+        nextController: {
+          kind: 'capped',
+          admin: '11'.repeat(32),
+          totalCap: 1_000,
+          remainingAllowance: 925,
+          initialized: true,
+        },
+      },
+    );
+
+    expect(mintBundle.continuedAsset.constructorArgs).toEqual(['bb'.repeat(32), 0, 0x02, true, 2, 2]);
+    expect(mintBundle.recipientAsset.constructorArgs).toEqual(['cc'.repeat(32), 75, 0x00, false, 2, 2]);
+    expect(mintBundle.nextController.contractPath).toBe('contracts/tokens/kcc20-capped.sil');
+    expect(mintBundle.nextController.constructorArgs.slice(0, 5)).toEqual([
+      '11'.repeat(32),
+      1_000,
+      925,
+      'aa'.repeat(32),
+      true,
+    ]);
   });
 });

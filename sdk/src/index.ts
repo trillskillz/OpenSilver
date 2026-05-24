@@ -352,8 +352,28 @@ export interface Kcc20LifecycleTransactionPlans {
   mint: Kcc20TransactionPlan;
 }
 
+export interface SilvercCompileSpec {
+  binary: string;
+  contractPath: string;
+  constructorArgs: Array<string | number | boolean>;
+  mode: 'ast-only' | 'compile';
+}
+
+export interface Kcc20DeploymentBundle {
+  controllerPreInit: SilvercCompileSpec;
+  assetGenesis: SilvercCompileSpec;
+  controllerInitialized: SilvercCompileSpec;
+}
+
+export interface Kcc20MintCompileBundle {
+  continuedAsset: SilvercCompileSpec;
+  recipientAsset: SilvercCompileSpec;
+  nextController: SilvercCompileSpec;
+}
+
 const KCC20_ASSET_CONTRACT_PATH = 'contracts/tokens/kcc20.sil';
 const KCC20_ASSET_DOC_PATH = 'docs/patterns/tokens/kcc20.md';
+const DEFAULT_SILVERC_BINARY = 'upstream/silverscript/target/debug/silverc';
 
 const KCC20_CONTROLLER_PATHS: Record<Kcc20ControllerKind, Kcc20ContractPaths> = {
   ownable: {
@@ -696,6 +716,115 @@ export function buildKcc20LifecycleTransactionPlans(
       ],
     },
   };
+}
+
+function normalizeCompileMode(mode: 'ast-only' | 'compile' | undefined): 'ast-only' | 'compile' {
+  return mode ?? 'compile';
+}
+
+function buildSilvercCompileSpec(
+  contractPath: string,
+  constructorArgs: Array<string | number | boolean>,
+  options: { silvercBinary?: string; mode?: 'ast-only' | 'compile' } = {},
+): SilvercCompileSpec {
+  return {
+    binary: options.silvercBinary ?? DEFAULT_SILVERC_BINARY,
+    contractPath,
+    constructorArgs,
+    mode: normalizeCompileMode(options.mode),
+  };
+}
+
+export function buildKcc20DeploymentBundle(
+  controller: Kcc20ControllerConfig,
+  template: Kcc20TemplateParts,
+  options: {
+    placeholderKcc20Covid?: string;
+    maxCovenantInputs?: number;
+    maxCovenantOutputs?: number;
+    silvercBinary?: string;
+    mode?: 'ast-only' | 'compile';
+    controllerCovenantIdPlaceholder?: string;
+    assetCovenantIdPlaceholder?: string;
+  } = {},
+): Kcc20DeploymentBundle {
+  const placeholderKcc20Covid = options.placeholderKcc20Covid ?? '00'.repeat(32);
+  const controllerCovenantIdPlaceholder = options.controllerCovenantIdPlaceholder ?? '<controller-covenant-id>';
+  const assetCovenantIdPlaceholder = options.assetCovenantIdPlaceholder ?? '<asset-covenant-id>';
+  const paths = getKcc20ControllerPaths(controller.kind);
+
+  const controllerPreInitArgs = buildKcc20ControllerConstructorArgs(controller, placeholderKcc20Covid, template);
+  const assetGenesisArgs = buildKcc20AssetConstructorArgs({
+    ownerIdentifier: controllerCovenantIdPlaceholder,
+    amount: 0,
+    identifierType: KCC20_IDENTIFIER_TYPE.covenantId,
+    isMinter: true,
+    maxCovenantInputs: options.maxCovenantInputs ?? 2,
+    maxCovenantOutputs: options.maxCovenantOutputs ?? 2,
+  });
+  const controllerInitializedArgs = buildKcc20ControllerConstructorArgs(
+    { ...controller, initialized: true },
+    assetCovenantIdPlaceholder,
+    template,
+  );
+
+  return {
+    controllerPreInit: buildSilvercCompileSpec(paths.controller, controllerPreInitArgs, options),
+    assetGenesis: buildSilvercCompileSpec(paths.asset, assetGenesisArgs, options),
+    controllerInitialized: buildSilvercCompileSpec(paths.controller, controllerInitializedArgs, options),
+  };
+}
+
+export function buildKcc20MintCompileBundle(
+  controller: Kcc20ControllerConfig,
+  template: Kcc20TemplateParts,
+  params: {
+    assetCovenantId: string;
+    controllerCovenantId: string;
+    recipientIdentifier: string;
+    recipientAmount: number;
+    nextController: Kcc20ControllerConfig;
+    continuedAssetAmount?: number;
+    maxCovenantInputs?: number;
+    maxCovenantOutputs?: number;
+    silvercBinary?: string;
+    mode?: 'ast-only' | 'compile';
+  },
+): Kcc20MintCompileBundle {
+  assertNonEmpty(params.assetCovenantId, 'assetCovenantId');
+  assertNonEmpty(params.controllerCovenantId, 'controllerCovenantId');
+  assertNonEmpty(params.recipientIdentifier, 'recipientIdentifier');
+  assertNonNegativeInteger(params.recipientAmount, 'recipientAmount');
+
+  const paths = getKcc20ControllerPaths(controller.kind);
+  const continuedAssetAmount = params.continuedAssetAmount ?? 0;
+  const continuedAssetArgs = buildKcc20AssetConstructorArgs({
+    ownerIdentifier: params.controllerCovenantId,
+    amount: continuedAssetAmount,
+    identifierType: KCC20_IDENTIFIER_TYPE.covenantId,
+    isMinter: true,
+    maxCovenantInputs: params.maxCovenantInputs ?? 2,
+    maxCovenantOutputs: params.maxCovenantOutputs ?? 2,
+  });
+  const recipientAssetArgs = buildKcc20AssetConstructorArgs({
+    ownerIdentifier: params.recipientIdentifier,
+    amount: params.recipientAmount,
+    identifierType: KCC20_IDENTIFIER_TYPE.pubkey,
+    isMinter: false,
+    maxCovenantInputs: params.maxCovenantInputs ?? 2,
+    maxCovenantOutputs: params.maxCovenantOutputs ?? 2,
+  });
+  const nextControllerArgs = buildKcc20ControllerConstructorArgs(params.nextController, params.assetCovenantId, template);
+
+  return {
+    continuedAsset: buildSilvercCompileSpec(paths.asset, continuedAssetArgs, params),
+    recipientAsset: buildSilvercCompileSpec(paths.asset, recipientAssetArgs, params),
+    nextController: buildSilvercCompileSpec(paths.controller, nextControllerArgs, params),
+  };
+}
+
+export function getDefaultSilvercBinary(): string {
+  return DEFAULT_SILVERC_BINARY;
 }
 
 export function getKcc20AssetDocPath(): string {
