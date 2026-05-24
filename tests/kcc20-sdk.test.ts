@@ -288,6 +288,18 @@ describe('kcc20 sdk helpers', () => {
     expect(printed).toContain('checkAmounts');
   });
 
+  it('surfaces a bootstrap hint when silverc is missing', () => {
+    const spec = buildSilvercCompileSpec(
+      'contracts/tokens/kcc20.sil',
+      ['00'.repeat(32), 0, 0x02, true, 2, 2],
+      { mode: 'ast-only', silvercBinary: 'definitely-not-a-real-silverc-binary' },
+    );
+
+    expect(() => runSilvercCompileSpec(spec, { repoRoot: process.cwd() })).toThrow(
+      /npm run bootstrap:silverc/,
+    );
+  });
+
   it('assembles a deploy-ready flow with compiled stage artifacts', () => {
     const repoRoot = process.cwd();
     const flow = buildKcc20DeployFlow<Record<string, unknown>>(

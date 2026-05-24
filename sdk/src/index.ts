@@ -876,6 +876,16 @@ export function buildSilvercCommandPlan(
   };
 }
 
+function formatSilvercInvocationError(err: unknown, binary: string): Error {
+  const execErr = err as NodeJS.ErrnoException & { message?: string };
+  if (execErr?.code === 'ENOENT') {
+    return new Error(
+      `silverc binary not found at ${binary}. Run \`npm run bootstrap:silverc\` from the repo root to fetch/build the pinned compiler first.`,
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
 export function runSilvercCompileSpec<TArtifact = unknown>(
   spec: SilvercCompileSpec,
   options: {
@@ -910,6 +920,8 @@ export function runSilvercCompileSpec<TArtifact = unknown>(
     execFileSync(command.binary, command.args, { stdio: 'pipe' });
     const artifact = JSON.parse(readFileSync(outputPath, 'utf8')) as TArtifact;
     return { spec, command, artifact };
+  } catch (err) {
+    throw formatSilvercInvocationError(err, command.binary);
   } finally {
     if (!options.keepTempDir) {
       rmSync(tempDir, { recursive: true, force: true });
