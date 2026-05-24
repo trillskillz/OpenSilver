@@ -125,9 +125,13 @@ Runtime suite is now **57/57 (50 core + 7 kcc20), 0 ignored**.
 
 Four ZK-aware patterns specified in `docs/patterns/zk/` with full design + intended `.sil` shape. **All four compile-blocked** on silverscript-lang exposing `OpZkPrecompile` as a callable builtin. Engine side is shipped (KIP-16, `rusty-kaspa#775` merged 2026-02-05); SilverScript front-end at pinned commit `2c46231` has no builtin wired through.
 
+### RFC landed (2026-05-24)
+
+`references/silverscript-rfc-opzkprecompile.md` now contains the full upstream-patch design: a two-line change to `silverscript-lang/src/compiler/compile.rs` + one row in `debug_value_types.rs` + a stdlib doc-comment entry. The patch is sketched as `diff` blocks in the RFC for direct application. The 0-arity builtin shape deliberately avoids tag-specific operand schemas — higher-level wrappers live in OpenSilver's `sdk/zk/`.
+
 Three unblock paths (in order of preference):
 
-1. **Land an upstream patch** to `kaspanet/silverscript/silverscript-lang/std/builtins.sil` adding `OpZkPrecompile` as a documented builtin with the canonical stack order (uncompressed VK, compressed proof, `n_inputs: i32`, then n public inputs in reverse). Roughly a one-screen change. OpenSilver should contribute it. This is the right answer.
+1. **File a PR against `kaspanet/silverscript`** carrying the RFC's patch sketch. Recommended PR title: "Expose OpZkPrecompile builtin to SilverScript front-end." Reviewers: `@OriNewman` (compiler maintainer), `@saefstroem` (KIP-16 author). This is the right answer; the RFC includes the test plan and a working `.sil` minimal example.
 2. **Raw-script splice** at the OpenSilver compile pipeline level: run `silverc`, then walk the emitted bytecode and insert `OpZkPrecompile` (`0xa6`) at a marker-comment position. Brittle stopgap; remove the moment path 1 lands.
 3. **Wait** — silverscript-lang is under active development; the builtin may land before Toccata activation. Worth a low-priority tracking question to Newman.
 
