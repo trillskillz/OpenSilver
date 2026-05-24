@@ -20,6 +20,7 @@ describe('TimeLock contract hardening', () => {
       expect(printed).toContain('cancel');
       expect(printed).toContain('extend_lock');
       expect(printed).toContain('soft_cancel_enabled');
+      expect(printed).toContain('tx.locktime < prev_state.unlock_time');
       expect(printed).toContain('requireExactPayout');
       expect(printed).toContain('ScriptPubKeyP2PK');
       expect(printed).toContain('tx.outputs[0].value == amount');

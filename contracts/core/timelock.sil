@@ -44,6 +44,7 @@ contract TimeLock(pubkey init_owner, pubkey init_beneficiary, int init_unlock_ti
             soft_cancel_enabled: soft_cancel_enabled
         };
         require(prev_state.soft_cancel_enabled);
+        require(tx.locktime < prev_state.unlock_time);
         requireOwner(owner_pk, owner_sig, prev_state);
         requireExactPayout(prev_state.owner);
     }

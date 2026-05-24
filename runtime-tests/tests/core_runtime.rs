@@ -767,6 +767,40 @@ fn timelock_cancel_rejects_when_soft_cancel_disabled() {
     assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
 }
 
+#[test]
+fn timelock_cancel_rejects_at_or_after_unlock_time() {
+    // Soft-cancel is now explicitly pre-unlock only: raw tx.locktime must sit
+    // below the covenant's unlock_time or the branch fails.
+    let owner = random_keypair();
+    let beneficiary = random_keypair();
+    let owner_pk = owner.x_only_public_key().0.serialize();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize();
+    let unlock_time = 5_i64;
+    let compiled = compile_contract_file(
+        "contracts/core/timelock.sil",
+        vec![
+            owner_pk.to_vec().into(),
+            beneficiary_pk.to_vec().into(),
+            unlock_time.into(),
+            Expr::bool(true),
+        ],
+    );
+
+    let input_value = 2_000u64;
+    let (tx, _payout) = build_terminal_payout_tx(&owner_pk, input_value, unlock_time as u64, 0x43);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let owner_sig = schnorr_signature(&mutable, 0, &owner);
+    let sigscript = compiled
+        .build_sig_script("cancel", vec![owner_pk.to_vec().into(), owner_sig.into()])
+        .expect("cancel sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("late soft-cancel must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
 // ─── HTLC refund (timeout path) ─────────────────────────────────────────────
 
 #[test]

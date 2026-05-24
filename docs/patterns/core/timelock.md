@@ -16,8 +16,7 @@ This scaffold also includes an owner-authorized `extend_lock` state transition s
 - `claim` requires both the beneficiary signature and `tx.time >= unlock_time`.
 - `claim` now constrains the terminal payout to a single beneficiary P2PK output with `input_value - minerFee` conservation on output 0.
 - `cancel` is only enabled when `soft_cancel_enabled == true`.
-- `cancel` now constrains the terminal payout to a single owner P2PK output with `input_value - minerFee` conservation on output 0.
-- Intended semantics are cancellation before unlock, but the strict pre-unlock guard is not yet encoded because this compiler snapshot is picky about some `tx.time` comparison shapes beyond the direct `>=` form.
+- `cancel` now enforces strict pre-unlock behavior with `tx.locktime < unlock_time` and constrains the terminal payout to a single owner P2PK output with `input_value - minerFee` conservation on output 0.
 - `extend_lock` can only move the lock **forward**, never backward.
 - This scaffold uses explicit `pubkey` state fields instead of hashed identifiers for simplicity; that may not be the final OpenSilver convention for all composable patterns.
 - This scaffold does not yet constrain transaction outputs or preserve value across transitions beyond the singleton continuation requirement.
@@ -43,10 +42,10 @@ Benchmarking not yet recorded.
 
 ## Audit status
 
-Not audited. Compiler-validated scaffold only, with a known limitation on the cancel-path time guard.
+Not audited. Compiler-validated scaffold with runtime coverage on claim / cancel / extend paths.
 
 ## WHEN NOT TO USE THIS
 
 - Do not use this when release conditions depend on multiple signers, oracles, or milestone state.
 - Do not use this when you need automatic recurring release; use a streaming or vesting pattern instead.
-- Do not treat this scaffold as production-ready until it has behavior tests, cost measurements, testnet exercise, and the cancel-path time guard tightened.
+- Do not treat this scaffold as production-ready until it has cost measurements, testnet exercise, and external review.

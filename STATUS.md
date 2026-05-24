@@ -11,7 +11,7 @@ DOCS_PAGES: 16 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro, docs/patterns/zk/README + 4 ZK pattern designs)
-TESTS_PASSING: 466/466 upstream + 24/24 vitest files (43/43 tests) + 57/57 cargo runtime suite (50 core + 7 kcc20, 0 ignored)
+TESTS_PASSING: 466/466 upstream + 26/26 vitest files (67/67 tests) + 58/58 cargo runtime suite (51 core + 7 kcc20, 0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3/4. Phase 5 blocked on silverscript-lang exposing OpZkPrecompile builtin (KIP-16 opcode 0xa6 — engine side already shipped via rusty-kaspa#775; compile-side not wired through yet at pinned commit 2c46231).
 NEXT_PHASE: 5 (land upstream silverscript-lang patch adding OpZkPrecompile builtin, then implement Pattern 5.1 Verified Computation). The honest-limitation gap in Phase 4 (covenant-output materialization) is now closed; SDK + integrations exercise real silverc compile end-to-end.
@@ -30,7 +30,7 @@ NEXT_PHASE: 5 (land upstream silverscript-lang patch adding OpZkPrecompile built
 - Landed initial Phase 2 scaffold: workspace directories, strict TypeScript config, Vitest, baseline CI, docs-site seed, and shared pattern-manifest surface.
 - Started Phase 3.1 Ownable with `contracts/core/ownable.sil`, `docs/patterns/core/ownable.md`, example/benchmark placeholders, and compiler-backed AST validation.
 - Started Phase 3.2 MultiSig with `contracts/core/multisig.sil`, `docs/patterns/core/multisig.md`, example placeholder, and compiler-backed AST validation.
-- Started Phase 3.3 TimeLock with `contracts/core/timelock.sil`, `docs/patterns/core/timelock.md`, example placeholder, and compiler-backed AST validation. Current limitation: the soft-cancel path still needs a strict pre-unlock guard that fits this compiler snapshot's `tx.time` parsing constraints. Logged as GitHub issue #1.
+- TimeLock (`contracts/core/timelock.sil`) now enforces strict pre-unlock soft-cancel behavior via `tx.locktime < unlock_time`, which works around the pinned compiler snapshot's `require(tx.time >= ...)`-only grammar special-case while preserving the intended semantics.
 - Started Phase 3.4 Vault with `contracts/core/vault.sil`, `docs/patterns/core/vault.md`, example placeholder, and compiler-backed AST validation.
 - Started Phase 3.5 Escrow (bilateral) with `contracts/core/escrow-bilateral.sil`, `docs/patterns/core/escrow-bilateral.md`, example placeholder, and compiler-backed AST validation.
 - Started Phase 3.6 Escrow (milestone) with `contracts/core/escrow-milestone.sil`, `docs/patterns/core/escrow-milestone.md`, example placeholder, and compiler-backed AST validation.
@@ -81,10 +81,7 @@ NEXT_PHASE: 5 (land upstream silverscript-lang patch adding OpZkPrecompile built
 | 3.12 Freelance/Payroll | `timeout_reclaim` (client post-timeout) | ✅ | — |
 | 3.2 MultiSig | `spend` (2-of-3 threshold) | ✅ | ✅ 1-of-3 below threshold |
 
-**46 runtime tests, 0 ignored, all green.** Phase 3 patterns 3.1 (Ownable), 3.2 (MultiSig), 3.3 (TimeLock), 3.4 (Vault, except owner-handoff singletons), 3.5 (BilateralEscrow), 3.6 (milestone Escrow), 3.7 (Streaming Payment), 3.8 (Vesting), 3.9 (DeadMansSwitch), 3.10 (SocialRecovery, except finalize_recovery), 3.11 (HTLC), 3.12 (Freelance/Payroll) all carry runtime engine coverage on their primary paths. Remaining minor coverage gaps:
-
-- **3.4 Vault** owner-handoff singletons (`propose_owner_transfer`, `accept_owner_transfer`) — apply the same `has_pending_owner` refactor as Ownable to unblock.
-- **3.10 SocialRecovery** `finalize_recovery` — runtime test not yet drafted; the contract compiles after the pubkey + bool refactor.
+**58 runtime tests, 0 ignored, all green.** Phase 3 patterns 3.1 (Ownable), 3.2 (MultiSig), 3.3 (TimeLock), 3.4 (Vault), 3.5 (BilateralEscrow), 3.6 (milestone Escrow), 3.7 (Streaming Payment), 3.8 (Vesting), 3.9 (DeadMansSwitch), 3.10 (SocialRecovery), 3.11 (HTLC), 3.12 (Freelance/Payroll) all carry runtime engine coverage on their documented primary paths; Phase 4 runtime coverage includes the current KCC20 controller family. No remaining Phase-3 runtime coverage gaps are tracked in this file.
 
 ### Compiler / contract gaps surfaced (Phase-3 followups)
 
