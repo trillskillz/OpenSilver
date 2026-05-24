@@ -9,7 +9,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 13/13 vitest compile suite + 30/30 cargo runtime suite (7 ignored, see compiler-gap notes)
+TESTS_PASSING: 466/466 upstream + 13/13 vitest compile suite + 34/34 cargo runtime suite (5 ignored, NUM2BIN gap only)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -67,6 +67,8 @@ NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then 
 | 3.5 Escrow (bilateral) | `release_to_seller` (arbiter + seller co-sign) | ✅ | ✅ payout-to-buyer |
 | 3.5 Escrow (bilateral) | `timeout_reclaim` (buyer post-timeout) | ✅ | — |
 | 3.6 Escrow (milestone) | `approve_milestone` (KIP-20 cov-id continuation) | ✅ | ✅ wrong continuation value |
+| 3.7 Streaming Payment | `cancel` (sender drain) | ✅ | ✅ recipient can't cancel |
+| 3.8 Vesting | `revoke` (admin drain when revocable) | ✅ | ✅ non-revocable rejects |
 | 3.9 Dead Man's Switch | `ping` (int-arg singleton) | ✅ | ✅ fallback can't ping |
 | 3.11 HTLC | `claim` (preimage + P2PK to recipient) | ✅ | ✅ wrong preimage |
 | 3.11 HTLC | `refund` (post-timeout to refunder) | ✅ | ✅ pre-timeout |
@@ -76,19 +78,19 @@ NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then 
 | 3.12 Freelance/Payroll | `timeout_reclaim` (client post-timeout) | ✅ | — |
 | 3.2 MultiSig | `spend` (2-of-3 threshold) | ✅ | ✅ 1-of-3 below threshold |
 
-**30 runtime tests across 11 patterns, all green.** Patterns still without coverage:
+**34 runtime tests across 13 patterns, all green.** Patterns still without coverage:
 
 - **3.1 Ownable** singleton transitions — blocked by NUM2BIN gap below.
-- **3.7 Streaming Payment** — blocked by `return-must-be-last` compile gap below.
-- **3.8 Vesting** — same compile gap.
+- **3.7 Streaming Payment** `withdraw` singleton — runtime test not yet drafted; the contract now compiles after the single-return refactor.
+- **3.8 Vesting** `claim` singleton — same as above.
 - **3.9 Dead Man's Switch** `claim` — uses `this.age`; needs engine DAA-score plumbing investigation.
 - **3.10 Social Recovery** `initiate_recovery` + `finalize_recovery` + `cancel_recovery` — blocked by NUM2BIN gap.
 - **3.4 Vault** owner-handoff singletons (`propose_owner_transfer`, `accept_owner_transfer`) — blocked by NUM2BIN gap.
 
 ### Compiler / contract gaps surfaced (Phase-3 followups)
 
-1. **`return-must-be-last` compile failure** (streaming-payment.sil, vesting.sil). The `silverscript-lang` back-end rejects `#[covenant.singleton(... termination = allowed)]` policies that have an early `return([...])` inside an `if` branch followed by a trailing `return([])`. The vitest `*-compile.test.ts` suites use `silverc --ast-only` and only check AST presence, so the parse-vs-compile gap is currently masked in CI. **Action:** refactor both policies to use a single trailing return shaped by an `if/else` that computes both branches' state into shared bindings.
+1. ~~**`return-must-be-last` compile failure**~~ ✅ CLOSED 2026-05-23. `streaming-payment.sil` and `vesting.sil` rewritten to the supported `#[covenant.singleton(mode = transition, termination = allowed)]` shape from upstream's AST fixture `lowers_singleton_sugar_transition_termination_allowed_two_field_state`: policy takes `next_states` from the caller, pins every field with `require(...)` constraints, and `return(next_states)` once at the end. Both contracts now run end-to-end through the engine; `cancel` and `revoke` have runtime test coverage. The withdraw/claim singletons themselves still need their own runtime tests drafted.
 2. **NUM2BIN size cap on byte[32] state writes**. Engine rejects with `push encoding is not minimal: NUM2BIN target size 32 exceeds 8 bytes` any singleton transition that writes a new byte[32] value into a state slot (runtime arg or `byte[32](0)` literal). Constructor-time byte[32] state and unchanged-byte[32]-slot continuations work fine — Vault.extend_lock and Vault.reconfigure_signers prove that. **Action paths:** refactor patterns to encode identity as `pubkey + bool flag` (Vault.reconfigure_signers proves this works), or patch the compiler lowering to use OP_PUSHDATA instead of NUM2BIN for byte[32] state writes.
 3. **`this.age` engine-side semantics**. DMS `claim` uses `this.age >= timeout_age`, which reads from current_daa - utxo.daa_score. Test harness doesn't currently set the engine's current-DAA context, so claim can't be exercised end-to-end yet. **Action:** find the engine knob (likely an `EngineFlags` or `EngineCtx` field for daa score) and parameterise the existing `execute_*_input` helpers.
 
-All three are tracked with full test bodies kept under `#[ignore = "..."]` so the post-fix sessions can revive them with no rewrite. Counts: 4 NUM2BIN-blocked tests, 2 compile-blocked tests, 1 DAA-blocked test slot still un-drafted.
+Tracked with full test bodies kept under `#[ignore = "..."]` so the post-fix sessions can revive them with no rewrite. Counts: 5 NUM2BIN-blocked tests still ignored; the two compile-blocked tests are now live and passing.

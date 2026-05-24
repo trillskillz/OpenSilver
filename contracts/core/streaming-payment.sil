@@ -48,24 +48,32 @@ contract StreamingPayment(
         require(tx.time >= prev_state.next_release_time);
         require(prev_state.remaining_allowance > 0);
 
-        if (prev_state.remaining_allowance > prev_state.rate_per_claim) {
-            int next_remaining = prev_state.remaining_allowance - prev_state.rate_per_claim;
+        // termination = allowed -> 0 or 1 continuation outputs.
+        require(next_states.length <= 1);
+
+        // Branch shapes:
+        //   length == 1 -> partial draw of rate_per_claim, continuation
+        //     state shifts forward.
+        //   length == 0 -> final draw of remaining_allowance, stream ends.
+        // require() pins every field of the continuation so the caller
+        // cannot substitute a forged next state — security-by-construction.
+        if (next_states.length == 1) {
+            require(prev_state.remaining_allowance > prev_state.rate_per_claim);
             requireExactPayout(prev_state.recipient, prev_state.rate_per_claim);
-            require(next_states.length == 1);
-            return([{
-                sender: prev_state.sender,
-                recipient: prev_state.recipient,
-                rate_per_claim: prev_state.rate_per_claim,
-                total_allowance: prev_state.total_allowance,
-                remaining_allowance: next_remaining,
-                period: prev_state.period,
-                next_release_time: prev_state.next_release_time + prev_state.period
-            }]);
+
+            require(next_states[0].sender == prev_state.sender);
+            require(next_states[0].recipient == prev_state.recipient);
+            require(next_states[0].rate_per_claim == prev_state.rate_per_claim);
+            require(next_states[0].total_allowance == prev_state.total_allowance);
+            require(next_states[0].remaining_allowance == prev_state.remaining_allowance - prev_state.rate_per_claim);
+            require(next_states[0].period == prev_state.period);
+            require(next_states[0].next_release_time == prev_state.next_release_time + prev_state.period);
+        } else {
+            require(prev_state.remaining_allowance <= prev_state.rate_per_claim);
+            requireExactPayout(prev_state.recipient, prev_state.remaining_allowance);
         }
 
-        requireExactPayout(prev_state.recipient, prev_state.remaining_allowance);
-        require(next_states.length == 0);
-        return([]);
+        return(next_states);
     }
 
     entrypoint function cancel(pubkey sender_pk, sig sender_sig) {

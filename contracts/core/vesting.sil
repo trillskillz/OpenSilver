@@ -50,26 +50,35 @@ contract Vesting(
         require(tx.time >= prev_state.cliff_time);
         require(prev_state.claimed_amount < prev_state.total_allocation);
 
-        int remaining = prev_state.total_allocation - prev_state.claimed_amount;
-        if (remaining > prev_state.release_per_period) {
-            int next_claimed = prev_state.claimed_amount + prev_state.release_per_period;
+        // termination = allowed -> 0 or 1 continuation outputs.
+        require(next_states.length <= 1);
+
+        // Branch shapes:
+        //   length == 1 -> partial release of release_per_period, schedule
+        //     shifts forward by one period.
+        //   length == 0 -> final release of whatever remains, schedule ends.
+        // require() pins every field of the continuation; no caller-side
+        // forgery of next state is possible.
+        if (next_states.length == 1) {
+            int remaining = prev_state.total_allocation - prev_state.claimed_amount;
+            require(remaining > prev_state.release_per_period);
             requireExactPayout(prev_state.beneficiary, prev_state.release_per_period);
-            require(next_states.length == 1);
-            return([{
-                beneficiary: prev_state.beneficiary,
-                admin: prev_state.admin,
-                total_allocation: prev_state.total_allocation,
-                claimed_amount: next_claimed,
-                cliff_time: prev_state.cliff_time + prev_state.period,
-                period: prev_state.period,
-                release_per_period: prev_state.release_per_period,
-                revocable: prev_state.revocable
-            }]);
+
+            require(next_states[0].beneficiary == prev_state.beneficiary);
+            require(next_states[0].admin == prev_state.admin);
+            require(next_states[0].total_allocation == prev_state.total_allocation);
+            require(next_states[0].claimed_amount == prev_state.claimed_amount + prev_state.release_per_period);
+            require(next_states[0].cliff_time == prev_state.cliff_time + prev_state.period);
+            require(next_states[0].period == prev_state.period);
+            require(next_states[0].release_per_period == prev_state.release_per_period);
+            require(next_states[0].revocable == prev_state.revocable);
+        } else {
+            int remaining = prev_state.total_allocation - prev_state.claimed_amount;
+            require(remaining <= prev_state.release_per_period);
+            requireExactPayout(prev_state.beneficiary, remaining);
         }
 
-        requireExactPayout(prev_state.beneficiary, remaining);
-        require(next_states.length == 0);
-        return([]);
+        return(next_states);
     }
 
     entrypoint function revoke(pubkey admin_pk, sig admin_sig) {

@@ -66,10 +66,10 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 - Extended coverage from 4 → **30 tests across 11 patterns, all green** (plus 7 documented-skipped). See `STATUS.md` matrix.
 - Added `runtime-tests/target/` and `Cargo.lock` to `.gitignore` so build artefacts don't follow into commits.
 - Three compiler/contract gaps surfaced by the harness (these were invisible to the AST-only vitest suite):
-  1. `streaming-payment.sil` and `vesting.sil` do not survive full compile — early `return([...])` inside `if` branch is `Unsupported`. Action: refactor both to single-return shapes.
+  1. ~~`streaming-payment.sil` and `vesting.sil` do not survive full compile~~ ✅ CLOSED 2026-05-23. Both refactored to the supported `termination = allowed` shape from upstream's `lowers_singleton_sugar_transition_termination_allowed_*` fixture: policy takes `next_states`, pins every field via `require(...)`, single trailing `return(next_states)`. Runtime coverage for `cancel`/`revoke` is now live; `withdraw`/`claim` singletons still need their own tests.
   2. NUM2BIN size cap on any singleton transition that writes a new byte[32] state value (runtime arg OR `byte[32](0)` literal). Affects Ownable, SocialRecovery, Vault owner-handoff. Action: refactor identity slots to `pubkey + bool flag` OR patch compiler to use OP_PUSHDATA on byte[32] state writes.
   3. Missing engine-side `this.age` / DAA-score plumbing in the harness. Blocks DMS.claim. Action: find the `EngineCtx`/`EngineFlags` knob for current DAA score and thread it through `execute_*_input`.
-- Test bodies for the blocked cases are kept in-file under `#[ignore = "..."]` with detailed notes, so post-fix sessions can revive them without rewriting.
+- Test bodies for the still-blocked cases are kept in-file under `#[ignore = "..."]` with detailed notes, so post-fix sessions can revive them without rewriting.
 
 ### 7. awesome-kaspa + Kaspa ecosystem index ✅ DONE 2026-05-23
 - Cloned `Kasbah-commons/awesome-kaspa` (correction: repo owner is **not** `aspectron`).

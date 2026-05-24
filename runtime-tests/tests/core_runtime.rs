@@ -1282,35 +1282,27 @@ fn freelance_arbiter_refund_rejects_with_only_arbiter_sig() {
     assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
 }
 
-// ─── Streaming + Vesting — gap surfaced 2026-05-23 ──────────────────────────
+// ─── Streaming + Vesting — restored after single-return refactor (2026-05-23)
 //
-// Tests for streaming-payment.sil::cancel and vesting.sil::revoke were
-// drafted but cannot run: the full silverscript compile path rejects both
-// .sil sources with `Unsupported("return statement must be the last
-// statement")`. The withdraw/claim singletons in each contract use early
-// `return([...])` inside an `if` branch followed by a `return([])` after,
-// which the AST-level vitest tests accept but the compiler back-end
-// rejects.
+// Earlier in this session the .sil sources for streaming-payment and
+// vesting were rejected by the full silverscript compile path with
+// `Unsupported("return statement must be the last statement")`. The
+// `withdraw`/`claim` policies were trying to *compute* the next state
+// inside the function via `return([...]) ... return([])` shapes, which
+// triggers `static_check.rs`'s rule that all returns must collapse to a
+// single trailing return with no nested returns.
 //
-// This is a real contract bug, not a harness limitation — those patterns
-// don't compile to runnable Kaspa script today, despite the existing
-// "*-compile.test.ts" suites passing (those use `silverc --ast-only`).
-// Fix is a contract-source refactor (single-return shape via a result
-// binding) and is tracked separately in NEXT_SESSION.md.
+// The fix that landed earlier this commit refactors both policies to the
+// supported `termination = allowed` shape from the upstream AST fixture
+// `lowers_singleton_sugar_transition_termination_allowed_two_field_state`:
+// the policy takes `next_states` from the caller, pins every field via
+// `require(...)` constraints, and `return(next_states)` once at the end.
+// The compiler-generated wrapper enforces `auth_out_count ==
+// new_states.length` and `validateOutputState` per output, so no caller
+// can substitute a forged continuation state.
 
 #[test]
-#[ignore = "streaming-payment.sil does not survive full compile yet — see NEXT_SESSION.md"]
-fn streaming_cancel_accepts_sender_signature_skipped() {}
-
-#[test]
-#[ignore = "vesting.sil does not survive full compile yet — see NEXT_SESSION.md"]
-fn vesting_revoke_accepts_admin_when_revocable_skipped() {}
-
-// ─── Original Streaming/Vesting drafts kept as comments below for the
-// post-refactor session.
-
-#[allow(dead_code)]
-fn _streaming_cancel_accepts_sender_signature() {
+fn streaming_cancel_accepts_sender_signature() {
     let sender = random_keypair();
     let recipient = random_keypair();
     let sender_pk = sender.x_only_public_key().0.serialize().to_vec();
@@ -1343,8 +1335,8 @@ fn _streaming_cancel_accepts_sender_signature() {
     assert!(result.is_ok(), "streaming cancel runtime failed: {}", result.unwrap_err());
 }
 
-#[allow(dead_code)]
-fn _streaming_cancel_rejects_recipient_signature() {
+#[test]
+fn streaming_cancel_rejects_recipient_signature() {
     // Recipient cannot cancel — only sender can.
     let sender = random_keypair();
     let recipient = random_keypair();
@@ -1380,10 +1372,10 @@ fn _streaming_cancel_rejects_recipient_signature() {
     let _ = sender_pk;
 }
 
-// ─── Vesting.revoke (gated; see Streaming note above) ──────────────────────
+// ─── Vesting.revoke ─────────────────────────────────────────────────────────
 
-#[allow(dead_code)]
-fn _vesting_revoke_accepts_admin_when_revocable() {
+#[test]
+fn vesting_revoke_accepts_admin_when_revocable() {
     let beneficiary = random_keypair();
     let admin = random_keypair();
     let beneficiary_pk = beneficiary.x_only_public_key().0.serialize().to_vec();
@@ -1417,8 +1409,8 @@ fn _vesting_revoke_accepts_admin_when_revocable() {
     assert!(result.is_ok(), "vesting revoke runtime failed: {}", result.unwrap_err());
 }
 
-#[allow(dead_code)]
-fn _vesting_revoke_rejects_when_not_revocable() {
+#[test]
+fn vesting_revoke_rejects_when_not_revocable() {
     let beneficiary = random_keypair();
     let admin = random_keypair();
     let beneficiary_pk = beneficiary.x_only_public_key().0.serialize().to_vec();
