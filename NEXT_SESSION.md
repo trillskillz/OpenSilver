@@ -89,3 +89,31 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 ## Exit criteria (when this file empties)
 
 All items above complete → flip `STATUS.md` to reflect Phase 2 completion and prompt for the next implementation slice. Keep recording outreach status in `ECOSYSTEM_COORDINATION.md` as responses arrive, but do not block execution on acknowledgements.
+
+## Phase 4 queue (added 2026-05-23)
+
+Pattern 4.1 KCC20 asset contract is scaffolded with vitest compile coverage. Five controller-covenant variants have stub docs at `docs/patterns/tokens/`; each captures the intended shape so implementation can pick up without re-deriving design choices. In order:
+
+1. **4.4 KCC20Capped** — scaffold landed at `contracts/tokens/kcc20-capped.sil`. Next work: SDK glue for the three-output mint shape and runtime tests against the asset contract.
+2. **4.3 KCC20Pausable** — scaffold landed at `contracts/tokens/kcc20-pausable.sil`. Next work: runtime coverage for pause/unpause + paused-mint rejection.
+3. **4.2 KCC20Ownable** — reuses Ownable's `pubkey + has_pending_admin` shape on top of the controller covenant.
+4. **4.5 KCC20Vesting** — reuses the `termination = allowed` single-return shape from Phase 3.7/3.8 (proven runtime-compatible).
+5. **4.6 KCC20Snapshot** — wait for KIP-21 lane stability before implementing.
+
+Each variant needs:
+- `contracts/tokens/<name>.sil` controller covenant
+- `docs/patterns/tokens/<name>.md` updated from STUB to scaffolded
+- `tests/tokens/<name>-compile.test.ts` vitest AST validation
+- Runtime test exercising the full three-phase genesis lifecycle (asset + controller + mint), once the harness has the `readInputStateWithTemplate` plumbing built out.
+
+Runtime test harness extensions needed for 4.x:
+- Multi-input transaction shape for KCC20.transfer (N:M leader+delegate path).
+- `readInputStateWithTemplate` setup — building a template prefix/suffix/hash and pushing them into ctor state.
+- Three-phase genesis lifecycle helper (minter genesis → asset genesis → mint).
+
+## Phase-3 minor coverage gaps (added 2026-05-23)
+
+These don't block Phase 4 but should be cleared on a quiet pass:
+
+- **3.4 Vault** owner-handoff singletons (`propose_owner_transfer`, `accept_owner_transfer`). Same NUM2BIN-driven fix as Ownable/SocialRecovery — apply the `pubkey + bool has_pending_owner` shape.
+- **3.10 SocialRecovery** `finalize_recovery` runtime test. The contract compiles; the test was deferred because of pubkey-slot-write concerns that are now resolved.

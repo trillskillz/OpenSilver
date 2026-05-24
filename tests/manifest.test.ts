@@ -31,5 +31,11 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[10]?.status).toBe('scaffolded');
     expect(patterns[11]?.id).toBe('core.freelance-payroll');
     expect(patterns[11]?.status).toBe('scaffolded');
+    expect(patterns[12]?.id).toBe('krc20.kcc20-reference');
+    expect(patterns[12]?.status).toBe('scaffolded');
+    expect(patterns[13]?.id).toBe('krc20.kcc20-pausable');
+    expect(patterns[13]?.status).toBe('scaffolded');
+    expect(patterns[14]?.id).toBe('krc20.kcc20-capped');
+    expect(patterns[14]?.status).toBe('scaffolded');
   });
 });

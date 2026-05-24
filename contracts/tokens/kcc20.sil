@@ -1,0 +1,102 @@
+pragma silverscript ^0.1.0;
+
+// KCC20 — token state machine. OpenSilver Pattern 4.1 reference impl.
+//
+// This is a near-verbatim port of the upstream worked example at
+// upstream/silverscript/silverscript-lang/tests/examples/kcc20.sil
+// (deep-read into docs/standards/KCC20.md). The intent is to give every
+// downstream OpenSilver KCC20 *variant* (Ownable, Pausable, Capped,
+// Vesting, Snapshot) a stable asset contract to bind their controller
+// covenants against.
+//
+// State layout (encoded into redeem script at deploy time):
+//   ownerIdentifier : byte[32]  // pubkey, P2SH script hash, or covenant ID
+//   identifierType  : byte      // 0x00 PUBKEY | 0x01 SCRIPT_HASH | 0x02 COVENANT_ID
+//   amount          : int
+//   isMinter        : bool      // mint-capable branch vs ordinary holder
+//
+// Three ownership modes (all driven by identifierType):
+//   PUBKEY        : require(checkSig(sigs[i], prevStates[i].ownerIdentifier))
+//   SCRIPT_HASH   : require P2SH-controlled input matching prevStates[i].ownerIdentifier
+//   COVENANT_ID   : require sibling input whose OpInputCovenantId matches
+//
+// Two invariants enforced by `transfer`:
+//   - Non-minter branches conserve supply (sum-in == sum-out).
+//   - Non-minter branches cannot create minter-marked outputs.
+//
+// Issuance policy lives in a *separate controller covenant* (4.2-4.6),
+// not here. That controller binds to this asset via covenant-id ownership
+// — a recipient KCC20 branch with isMinter=true carries the controller's
+// covenant ID in ownerIdentifier and identifierType=COVENANT_ID. See
+// docs/standards/KCC20.md for the three-phase genesis lifecycle.
+//
+// Security note on witnesses[]: the witnesses array carries input indices
+// the contract should inspect for SCRIPT_HASH and COVENANT_ID ownership
+// proofs. Callers are trusted to supply valid indices (bounded by maxCovIns
+// in the loop), but production wrappers SHOULD add explicit
+// `require(witnesses[i] < tx.inputs.length)` checks. See
+// docs/standards/KCC20.md "Open questions" #3.
+
+contract KCC20(
+    byte[32] genesisIdentifier,
+    int genesisAmount,
+    byte genesisIdentifierType,
+    bool genesisIsMinter,
+    int maxCovIns,
+    int maxCovOuts
+) {
+    byte constant IDENTIFIER_PUBKEY = 0x00;
+    byte constant IDENTIFIER_SCRIPT_HASH = 0x01;
+    byte constant IDENTIFIER_COVENANT_ID = 0x02;
+
+    byte[32] ownerIdentifier = genesisIdentifier;
+    byte identifierType = genesisIdentifierType;
+    int amount = genesisAmount;
+    bool isMinter = genesisIsMinter;
+
+    function checkSigs(State[] prevStates, sig[] sigs, byte[] witnesses) {
+        for(i, 0, prevStates.length, maxCovIns) {
+            if(prevStates[i].identifierType == IDENTIFIER_PUBKEY) {
+                require(checkSig(sigs[i], prevStates[i].ownerIdentifier));
+            } else if(prevStates[i].identifierType == IDENTIFIER_SCRIPT_HASH) {
+                byte[] spk = new ScriptPubKeyP2SH(prevStates[i].ownerIdentifier);
+                require(tx.inputs[witnesses[i]].scriptPubKey == spk);
+            } else if(prevStates[i].identifierType == IDENTIFIER_COVENANT_ID) {
+                require(OpInputCovenantId(witnesses[i]) == prevStates[i].ownerIdentifier);
+            } else {
+                require(false);
+            }
+        }
+    }
+
+    function checkAmounts(State[] prevStates, State[] newStates) {
+        if(!isMinter) {
+            int totalIn = 0;
+            for(i, 0, prevStates.length, maxCovIns) {
+                totalIn = totalIn + prevStates[i].amount;
+            }
+
+            int totalOut = 0;
+            for(i, 0, newStates.length, maxCovOuts) {
+                totalOut = totalOut + newStates[i].amount;
+            }
+
+            require(totalIn == totalOut);
+        }
+    }
+
+    function checkMintingTransfer(State[] newStates) {
+        if(!isMinter) {
+            for(i, 0, newStates.length, maxCovOuts) {
+                require(!newStates[i].isMinter);
+            }
+        }
+    }
+
+    #[covenant(binding = cov, from = maxCovIns, to = maxCovOuts)]
+    function transfer(State[] prevStates, State[] newStates, sig[] sigs, byte[] witnesses) {
+        checkSigs(prevStates, sigs, witnesses);
+        checkAmounts(prevStates, newStates);
+        checkMintingTransfer(newStates);
+    }
+}

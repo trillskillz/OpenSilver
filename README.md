@@ -44,17 +44,17 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 | `upstream/silverscript/` | Pinned clone of `kaspanet/silverscript` at `2c46231` (gitignored). |
 | `upstream/kips/` | Pinned clone of `kaspanet/kips` (gitignored). |
 
-## Pattern catalogue (target — none built yet)
+## Pattern catalogue
 
-22 patterns across three groups, informed by Phase 0 findings but not blocked on Phase 0 acknowledgement:
+22 patterns across three groups.
 
-- **Phase 3 — Core (12):** Ownable, MultiSig, TimeLock, Vault, Escrow (bilateral), Escrow (milestone), Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Atomic Swap (HTLC), Freelance/Payroll.
-- **Phase 4 — KRC-20 (6):** Reference, Ownable, Pausable, Capped, Vesting, Snapshot.
-- **Phase 5 — ZK-aware (4):** Verified Computation, Private Asset Transfer, ZK-Verified Oracle, Proof-Stitched Multi-Pattern.
+- **Phase 3 — Core (12):** Ownable, MultiSig, TimeLock, Vault, Escrow (bilateral), Escrow (milestone), Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Atomic Swap (HTLC), Freelance/Payroll. **All 12 scaffolds runtime-verified end-to-end** (46/46 runtime tests, see Toolchain below).
+- **Phase 4 — KCC20 token (6):** Reference, Ownable, Pausable, Capped, Vesting, Snapshot. **Asset contract (4.1) scaffolded** at `contracts/tokens/kcc20.sil`; **KCC20Pausable controller (4.3) scaffolded** at `contracts/tokens/kcc20-pausable.sil`; **KCC20Capped controller (4.4) scaffolded** at `contracts/tokens/kcc20-capped.sil`; 4.2/4.5 have stub docs at `docs/patterns/tokens/`; 4.6 is deferred until KIP-21 lane stability lands.
+- **Phase 5 — ZK-aware (4):** Verified Computation, Private Asset Transfer, ZK-Verified Oracle, Proof-Stitched Multi-Pattern. Implementation guidance captured in `references/kips/SUMMARY.md`; not yet scaffolded.
 
 ## Toolchain
 
 - Upstream: `cargo test -p silverscript-lang` runs **466 tests across 21 suites with 0 failures** at the pinned upstream commit.
-- Compile suite: `npm run verify` (= `tsc -b` + `vitest`) is **13/13 green** — one compile test per Phase-3 pattern plus the shared manifest test.
+- Compile suite: `npm run verify` (= `tsc -b` + `vitest`) is **16/16 green** — one compile test per Phase-3 pattern, token scaffolds for 4.1 + 4.3 + 4.4, plus the shared manifest test.
 - Runtime suite: `npm run test:runtime` (= `cargo test --manifest-path runtime-tests/Cargo.toml`) is **46/46 green, 0 ignored**. Each test compiles a `.sil` contract via `silverscript-lang` and executes the redeem script in `kaspa-txscript`'s `TxScriptEngine` against a hand-built `MutableTransaction` + `UtxoEntry`. Pairs are (happy path → engine OK, failure mode → `VerifyError|EvalFalse|UnsatisfiedLockTime`). Every Phase-3 core pattern is now end-to-end runtime-verified on its primary paths: TimeLock (claim/cancel/extend), Vault (release/extend/reconfigure), BilateralEscrow (release/timeout), milestone Escrow (KIP-20 cov-id continuation), Streaming Payment (withdraw/cancel), Vesting (claim/revoke), HTLC (claim/refund), MultiSig (2-of-3 threshold), DMS (ping/claim via CSV), FreelancePayroll (4 paths), Ownable (propose/accept), SocialRecovery (initiate/cancel). All three earlier compiler/contract gaps (return-must-be-last, NUM2BIN-on-byte[32]-state-writes, DAA-score harness) are now closed.
 - Phase 3.1 through 3.12 are underway with compiler-validated `contracts/core/ownable.sil`, `contracts/core/multisig.sil`, `contracts/core/timelock.sil`, `contracts/core/vault.sil`, `contracts/core/escrow-bilateral.sil`, `contracts/core/escrow-milestone.sil`, `contracts/core/streaming-payment.sil`, `contracts/core/vesting.sil`, `contracts/core/dead-man-switch.sil`, `contracts/core/social-recovery.sil`, `contracts/core/atomic-swap-htlc.sil`, and `contracts/core/freelance-payroll.sil` scaffolds, plus matching docs/tests.

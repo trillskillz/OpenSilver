@@ -1,0 +1,126 @@
+pragma silverscript ^0.1.0;
+
+// KCC20Capped — supply-capped controller covenant. OpenSilver Pattern 4.4.
+//
+// This is the first Phase-4 controller implementation over the stable Pattern 4.1
+// asset contract (`contracts/tokens/kcc20.sil`). It lifts the upstream KCC20Minter
+// shape and makes the issuance budget explicit via `remainingAllowance`.
+//
+// Design rule: the asset contract owns token state transitions; this controller
+// owns issuance policy. The KCC20 minter branch is covenant-id-owned by this
+// controller, so every mint transaction must spend both contracts together.
+
+contract KCC20Capped(
+    pubkey admin,
+    int initTotalCap,
+    int initRemainingAllowance,
+    byte[32] initKCC20Covid,
+    bool initInitialized,
+    int templatePrefixLen,
+    int templateSuffixLen,
+    byte[32] expectedTemplateHash,
+    byte[] templatePrefix,
+    byte[] templateSuffix
+) {
+    byte[32] kcc20Covid = initKCC20Covid;
+    int totalCap = initTotalCap;
+    int remainingAllowance = initRemainingAllowance;
+    bool initialized = initInitialized;
+
+    struct KCC20State {
+        byte[32] ownerIdentifier;
+        byte identifierType;
+        int amount;
+        bool isMinter;
+    }
+
+    byte constant IDENTIFIER_COVENANT_ID = 0x02;
+
+    function requireAdmin(sig adminSig) {
+        require(checkSig(adminSig, admin));
+    }
+
+    function requireValidCap(State prevState) {
+        require(prevState.totalCap >= 0);
+        require(prevState.remainingAllowance >= 0);
+        require(prevState.totalCap >= prevState.remainingAllowance);
+    }
+
+    function calcInAmount() : int {
+        KCC20State kcc20PrevState = readInputStateWithTemplate(
+            OpCovInputIdx(kcc20Covid, 0),
+            templatePrefixLen,
+            templateSuffixLen,
+            expectedTemplateHash
+        );
+        return kcc20PrevState.amount;
+    }
+
+    function checkMinterKcc20NewState(KCC20State minterKcc20NewState) {
+        byte[32] controllerId = OpInputCovenantId(this.activeInputIndex);
+        require(minterKcc20NewState.ownerIdentifier == controllerId);
+        require(minterKcc20NewState.identifierType == IDENTIFIER_COVENANT_ID);
+        require(minterKcc20NewState.isMinter);
+
+        validateOutputStateWithTemplate(
+            OpCovOutputIdx(kcc20Covid, 0),
+            minterKcc20NewState,
+            templatePrefix,
+            templateSuffix,
+            expectedTemplateHash
+        );
+    }
+
+    function checkRecipientKcc20NewState(KCC20State recipientKcc20NewState) {
+        require(!recipientKcc20NewState.isMinter);
+        validateOutputStateWithTemplate(
+            OpCovOutputIdx(kcc20Covid, 1),
+            recipientKcc20NewState,
+            templatePrefix,
+            templateSuffix,
+            expectedTemplateHash
+        );
+    }
+
+    #[covenant.singleton]
+    function init(State prevState, State newState, sig adminSig) {
+        requireValidCap(prevState);
+        require(!prevState.initialized);
+        require(newState.kcc20Covid == OpOutputCovenantId(0));
+        require(newState.totalCap == prevState.totalCap);
+        require(newState.remainingAllowance == prevState.remainingAllowance);
+        require(newState.initialized);
+        requireAdmin(adminSig);
+    }
+
+    #[covenant.singleton]
+    function mint(
+        State prevState,
+        State newState,
+        sig adminSig,
+        KCC20State minterKcc20NewState,
+        KCC20State recipientKcc20NewState
+    ) {
+        requireValidCap(prevState);
+        require(prevState.initialized);
+        require(newState.initialized);
+        require(newState.kcc20Covid == prevState.kcc20Covid);
+        require(newState.totalCap == prevState.totalCap);
+        require(newState.remainingAllowance >= 0);
+        require(newState.remainingAllowance <= prevState.remainingAllowance);
+
+        // Simple 1-in / 2-out minter case: the continued minter branch plus one recipient branch.
+        require(OpCovOutputCount(kcc20Covid) == 2);
+        require(OpCovInputCount(kcc20Covid) == 1);
+
+        checkMinterKcc20NewState(minterKcc20NewState);
+        checkRecipientKcc20NewState(recipientKcc20NewState);
+
+        int inAmount = calcInAmount();
+        int mintedAmount = minterKcc20NewState.amount + recipientKcc20NewState.amount - inAmount;
+        require(mintedAmount > 0);
+        require(mintedAmount <= prevState.remainingAllowance);
+        require(newState.remainingAllowance == prevState.remainingAllowance - mintedAmount);
+        requireAdmin(adminSig);
+    }
+}

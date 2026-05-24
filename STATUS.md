@@ -3,13 +3,14 @@
 ```
 PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
 PHASE_2_STATUS: IN_PROGRESS (monorepo scaffold landed; 12 Phase-3 patterns scaffolded; runtime harness live)
-PATTERNS_COMPLETE: 0/22 (12 scaffolds started: Ownable, MultiSig, TimeLock, Vault, Escrow bilateral, Escrow milestone, Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Atomic Swap HTLC, Freelance / Payroll)
+PHASE_4_STATUS: IN_PROGRESS (KCC20 asset contract scaffolded as 4.1; KCC20Pausable and KCC20Capped controllers scaffolded as 4.3/4.4)
+PATTERNS_COMPLETE: 0/22 (12 Phase-3 scaffolds runtime-verified; 3 Phase-4 patterns scaffolded: KCC20 reference + KCC20Pausable + KCC20Capped)
 TESTNET_TXS: []
 DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 13/13 vitest compile suite + 46/46 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 16/16 vitest compile suite + 46/46 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -91,3 +92,16 @@ NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then 
 3. ~~**`this.age` engine-side semantics**~~ ✅ CLOSED 2026-05-23. Reading the compiler showed `this.age` lowers to `OpCheckSequenceVerify` (Kaspa's CSV), which reads `input.sequence` directly — not a current-DAA context. So we satisfy `this.age >= timeout_age` by setting the spending input's `sequence` to the desired relative-time value. DMS.claim now has positive + negative runtime coverage. Mask is `SEQUENCE_LOCK_TIME_MASK = 0x00000000ffffffff`; values must keep the disabled-bit (`1 << 63`) unset.
 
 All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
+
+## Phase 4 — KCC20 token patterns (current)
+
+| Slot | Pattern | Asset | Controller | Status |
+| --- | --- | --- | --- | --- |
+| 4.1 | KCC20 reference | `contracts/tokens/kcc20.sil` | (pluggable) | Scaffolded; vitest-compiled |
+| 4.2 | KCC20Ownable | (4.1 reused) | TODO | Stub doc only |
+| 4.3 | KCC20Pausable | (4.1 reused) | `contracts/tokens/kcc20-pausable.sil` | Scaffolded; vitest-compiled |
+| 4.4 | KCC20Capped | (4.1 reused) | `contracts/tokens/kcc20-capped.sil` | Scaffolded; vitest-compiled |
+| 4.5 | KCC20Vesting | (4.1 reused) | TODO | Stub doc only |
+| 4.6 | KCC20Snapshot | (touches asset) | n/a | Stub doc; deferred to KIP-21 lane stability |
+
+Headline design rule (from `docs/standards/KCC20.md`): asset contract and issuance-policy controller are separate covenants. The 4.1 asset is stable across 4.2-4.5; only the controller covenant changes per variant. 4.3 `KCC20Pausable` and 4.4 `KCC20Capped` are the first controller scaffolds, both lifted from the upstream `kcc20-minter.sil` shape with policy-specific state (`paused`, `remainingAllowance`). 4.6 is deferred until KIP-21 advances from Draft.

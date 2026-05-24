@@ -132,6 +132,36 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/core/freelance-payroll.sil',
     docPath: 'docs/patterns/core/freelance-payroll.md',
   },
+  {
+    id: 'krc20.kcc20-reference',
+    title: 'KCC20 reference',
+    phase: 'krc20',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Stable KCC20 asset contract with three ownership modes and non-minter supply-conservation invariants.',
+    contractPath: 'contracts/tokens/kcc20.sil',
+    docPath: 'docs/patterns/tokens/kcc20.md',
+  },
+  {
+    id: 'krc20.kcc20-pausable',
+    title: 'KCC20Pausable',
+    phase: 'krc20',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Controller covenant that halts new KCC20 issuance while paused without freezing existing holder transfers.',
+    contractPath: 'contracts/tokens/kcc20-pausable.sil',
+    docPath: 'docs/patterns/tokens/kcc20-pausable.md',
+  },
+  {
+    id: 'krc20.kcc20-capped',
+    title: 'KCC20Capped',
+    phase: 'krc20',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Controller covenant that caps KCC20 issuance through a decremented remaining-allowance state budget.',
+    contractPath: 'contracts/tokens/kcc20-capped.sil',
+    docPath: 'docs/patterns/tokens/kcc20-capped.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {
