@@ -2,6 +2,7 @@
 
 **Target repo:** `kaspanet/silverscript` (specifically `silverscript-lang/src/compiler/compile.rs`)
 **Tracking issue:** OpenSilver #3 — "Upstream silverscript PR: expose OpZkPrecompile builtin"
+**Upstream PR:** `kaspanet/silverscript#125` — https://github.com/kaspanet/silverscript/pull/125
 **Author:** OpenSilver maintainers
 **Status:** Design (2026-05-24)
 
