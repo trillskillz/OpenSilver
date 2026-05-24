@@ -210,9 +210,10 @@ export const patternManifest: PatternManifestEntry[] = [
     id: 'zk-aware.zk-verified-oracle',
     title: 'ZK-Verified Oracle',
     phase: 'zk-aware',
-    stateful: true,
-    status: 'planned',
-    summary: 'M-of-N committee + Groth16 proof of correct computation over a committed data source.',
+    stateful: false,
+    status: 'scaffolded',
+    summary: 'M-of-N committee + Groth16 proof of correct computation. Compiles via the OpenSilver Phase-5 patch lane; runtime-verified with a real Groth16 fixture. v1 emits a terminal payout; the cross-contract output-binding wrapper is a follow-up.',
+    contractPath: 'contracts/zk/zk-verified-oracle.sil',
     docPath: 'docs/patterns/zk/zk-verified-oracle.md',
   },
   {

@@ -121,6 +121,30 @@ fn compile_verified_computation(
         .expect("verified-computation.sil compiles under the patched silverc")
 }
 
+fn compile_zk_verified_oracle(
+    verifying_key: &[u8],
+    recipient_pk: &[u8],
+    threshold: i64,
+    guardian1_pk: &[u8],
+    guardian2_pk: &[u8],
+    guardian3_pk: &[u8],
+) -> CompiledContract<'static> {
+    let source = fs::read_to_string(repo_root().join("contracts/zk/zk-verified-oracle.sil"))
+        .expect("contract source reads");
+    let args: Vec<Expr<'static>> = vec![
+        bytes_to_expr(verifying_key),
+        bytes_to_expr(recipient_pk),
+        Expr::int(threshold),
+        bytes_to_expr(guardian1_pk),
+        bytes_to_expr(guardian2_pk),
+        bytes_to_expr(guardian3_pk),
+    ];
+    let leaked_source: &'static str = Box::leak(source.into_boxed_str());
+    let leaked_args: &'static [Expr<'static>] = Vec::leak(args);
+    compile_contract(leaked_source, leaked_args, CompileOptions::default())
+        .expect("zk-verified-oracle.sil compiles under the patched silverc")
+}
+
 // ─── Pattern 5.1: Verified Computation ─────────────────────────────────────
 
 #[test]
@@ -306,4 +330,238 @@ fn verified_computation_rejects_wrong_prover_signature() {
 
     let err = execute_plain_input(mutable.tx, utxo).expect_err("attacker prover must fail");
     assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+// ─── Pattern 5.3: ZK-Verified Oracle ───────────────────────────────────────
+
+#[test]
+fn zk_verified_oracle_accepts_quorum_plus_groth16() {
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let proof = decode_hex(&fixture.proof_compressed_hex);
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let recipient = random_keypair();
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+
+    let threshold = 2_i64;
+    let compiled = compile_zk_verified_oracle(&verifying_key, &recipient_pk, threshold, &g1_pk, &g2_pk, &g3_pk);
+
+    let input_value = 5_000u64;
+    let payout_value = input_value - 1_000;
+    let output0 = TransactionOutput {
+        value: payout_value,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(&recipient_pk).into()),
+        covenant: None,
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xB0; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    // 2-of-3: g1 and g2 sign validly; the third slot is padded with a
+    // non-member who can't push the approval count past threshold.
+    let attacker = random_keypair();
+    let attacker_pk = attacker.x_only_public_key().0.serialize().to_vec();
+    let sig1 = schnorr_signature(&mutable, 0, &g1);
+    let sig2 = schnorr_signature(&mutable, 0, &g2);
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+
+    let sigscript = compiled
+        .build_sig_script(
+            "publish",
+            vec![
+                g1_pk.into(),
+                sig1.into(),
+                g2_pk.into(),
+                sig2.into(),
+                attacker_pk.into(),
+                attacker_sig.into(),
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+            ],
+        )
+        .expect("publish sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "zk-verified-oracle runtime failed: {}", result.unwrap_err());
+
+    let _ = g3_pk;
+}
+
+#[test]
+fn zk_verified_oracle_rejects_below_committee_threshold() {
+    // Valid Groth16 proof, but only one valid guardian signature — below
+    // threshold = 2. The approvalCount() < threshold gate fires.
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let proof = decode_hex(&fixture.proof_compressed_hex);
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let recipient = random_keypair();
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+
+    let threshold = 2_i64;
+    let compiled = compile_zk_verified_oracle(&verifying_key, &recipient_pk, threshold, &g1_pk, &g2_pk, &g3_pk);
+
+    let input_value = 5_000u64;
+    let payout_value = input_value - 1_000;
+    let output0 = TransactionOutput {
+        value: payout_value,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(&recipient_pk).into()),
+        covenant: None,
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xB1; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    // Only g1 signs validly; the other two slots are non-members.
+    let attacker_a = random_keypair();
+    let attacker_b = random_keypair();
+    let attacker_a_pk = attacker_a.x_only_public_key().0.serialize().to_vec();
+    let attacker_b_pk = attacker_b.x_only_public_key().0.serialize().to_vec();
+    let sig1 = schnorr_signature(&mutable, 0, &g1);
+    let sig_a = schnorr_signature(&mutable, 0, &attacker_a);
+    let sig_b = schnorr_signature(&mutable, 0, &attacker_b);
+
+    let sigscript = compiled
+        .build_sig_script(
+            "publish",
+            vec![
+                g1_pk.into(),
+                sig1.into(),
+                attacker_a_pk.into(),
+                sig_a.into(),
+                attacker_b_pk.into(),
+                sig_b.into(),
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+            ],
+        )
+        .expect("publish sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("below-threshold quorum must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+
+    let _ = (g2_pk, g3_pk);
+}
+
+#[test]
+fn zk_verified_oracle_rejects_quorum_but_tampered_proof() {
+    // Two valid guardian sigs (would pass threshold) but the proof has
+    // been tampered. Both tiers must succeed; the Groth16 verifier fires.
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let mut proof = decode_hex(&fixture.proof_compressed_hex);
+    proof[0] ^= 0xff;
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let recipient = random_keypair();
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+
+    let threshold = 2_i64;
+    let compiled = compile_zk_verified_oracle(&verifying_key, &recipient_pk, threshold, &g1_pk, &g2_pk, &g3_pk);
+
+    let input_value = 5_000u64;
+    let payout_value = input_value - 1_000;
+    let output0 = TransactionOutput {
+        value: payout_value,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(&recipient_pk).into()),
+        covenant: None,
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xB2; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let attacker = random_keypair();
+    let attacker_pk = attacker.x_only_public_key().0.serialize().to_vec();
+    let sig1 = schnorr_signature(&mutable, 0, &g1);
+    let sig2 = schnorr_signature(&mutable, 0, &g2);
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+
+    let sigscript = compiled
+        .build_sig_script(
+            "publish",
+            vec![
+                g1_pk.into(),
+                sig1.into(),
+                g2_pk.into(),
+                sig2.into(),
+                attacker_pk.into(),
+                attacker_sig.into(),
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+            ],
+        )
+        .expect("publish sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo).expect_err("tampered proof must fail");
+    match err {
+        TxScriptError::ZkIntegrity(_) | TxScriptError::VerifyError | TxScriptError::EvalFalse => {}
+        other => panic!("unexpected error variant: {other:?}"),
+    }
+
+    let _ = g3_pk;
 }

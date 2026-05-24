@@ -1,6 +1,12 @@
 # ZK-Verified Oracle — Pattern 5.3
 
-Status: DESIGN. Blocked on silverscript-lang exposing `OpZkPrecompile`.
+Status: **v1 SCAFFOLDED + RUNTIME-VERIFIED (local patch lane)**. Contract at `contracts/zk/zk-verified-oracle.sil` compiles via `npm run patch:silverc:zk`. Three runtime tests in `runtime-tests/tests/zk_runtime.rs`:
+
+- `zk_verified_oracle_accepts_quorum_plus_groth16` — 2-of-3 committee + valid Groth16 proof → engine accepts.
+- `zk_verified_oracle_rejects_below_committee_threshold` — valid proof but only one valid guardian signature → fails the `approvalCount >= threshold` gate.
+- `zk_verified_oracle_rejects_quorum_but_tampered_proof` — quorum signatures valid but proof tampered → fails the `OpGroth16Verify` gate.
+
+**v1 limitation:** emits a terminal P2PK payout to a deploy-time `recipient`, NOT a cross-contract output binding via `validateOutputStateWithTemplate`. The full design (below) ties the oracle's published value into a consumer covenant's input — that's a separate wrapper pattern, deferrable until a concrete consumer is in flight.
 
 ## Summary
 

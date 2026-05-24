@@ -139,7 +139,7 @@ Three unblock paths (in order of preference):
 Implementation order:
 
 1. ✅ **5.1 Verified Computation** — DONE 2026-05-24. `contracts/zk/verified-computation.sil` compiles via the local patch lane and runtime-verifies a real Groth16 fixture end-to-end through `kaspa-txscript`. Three runtime tests in `runtime-tests/tests/zk_runtime.rs` (positive + tampered-proof + wrong-prover). **Patch correctness fix surfaced this round**: the patch was pushing public inputs in source order; the engine pops from the top so they were reversed. Fixed locally — needs folding back into `kaspanet/silverscript#125` before upstream merge.
-2. **5.3 ZK-Verified Oracle** — NEXT. Combines 5.1's Groth16 surface with the HodlVault-style M-of-N committee threshold. Demonstrates composition with an existing Phase-3 idiom. Runtime test can reuse the same Groth16 fixture; needs to add a 2-of-3 committee signature step.
+2. ✅ **5.3 ZK-Verified Oracle** — DONE 2026-05-24. v1 contract at `contracts/zk/zk-verified-oracle.sil` compiles via the patch lane; three runtime tests prove (2-of-3 committee + Groth16 → OK), (1-of-3 + Groth16 → reject), (2-of-3 + tampered proof → reject). v1 emits a terminal payout; cross-contract output-binding wrapper is deferred until a concrete consumer is in flight.
 3. **5.2 Private Asset Transfer** — most ambitious; circuit IS the pattern. Needs a working Groth16 prover for a specific circuit before the covenant is meaningful. Defer until we have a real commitment/nullifier circuit to bind against.
 4. **5.4 Proof-Stitched Multi-Pattern** — the vProgs forward-compat target. Should be LAST; needs 5.1's stack-order pattern stable and battle-tested first.
 

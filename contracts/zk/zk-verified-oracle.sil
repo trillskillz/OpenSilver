@@ -1,0 +1,113 @@
+pragma silverscript ^0.1.0;
+
+// Pattern 5.3 — ZK-Verified Oracle.
+//
+// COMPILE STATUS: requires the OpenSilver Phase-5 compiler patch
+// (`npm run patch:silverc:zk`). See `contracts/zk/verified-computation.sil`
+// header for the full unblock-path story.
+//
+// What it does:
+//   Combines Pattern 5.1's Groth16-verification surface with the
+//   HodlVault-style M-of-N committee threshold from MultiSig. The
+//   oracle publishes a value (released as a payout to the recipient)
+//   only if BOTH:
+//     1. Threshold-many committee guardians sign the publish call.
+//     2. A valid Groth16 proof attests the computation behind the
+//        published value.
+//
+// Why two-tier authorisation:
+//   The proof attests *what was computed* over a committed data
+//   source. The committee attests *who is allowed to submit a result*.
+//   Either alone is insufficient: signatures alone = trust the
+//   committee; proof alone = anyone with a valid (proof,
+//   public_inputs) tuple could spend. Combined, the oracle is
+//   trust-minimised on data correctness AND on who may publish.
+//
+// What this v1 does NOT do:
+//   - No cross-contract output binding. Pattern 5.3's full design
+//     (docs/patterns/zk/zk-verified-oracle.md) ties the result to a
+//     consumer covenant's input via validateOutputStateWithTemplate.
+//     This v1 emits a simple terminal payout to a recipient; the
+//     consumer-covenant wiring is a follow-up wrapper.
+//   - No data-commitment rotation. The verifying key and the
+//     consumer recipient are both deploy-time state. A rotation path
+//     belongs in a separate admin-gated companion covenant
+//     (analogous to KCC20Ownable's relationship to KCC20).
+//
+// Public-inputs layout (committed to by the deploy):
+//   public_inputs[0..4]: domain-specific oracle output. The N=5
+//   public-input shape matches the Groth16 fixture so we can exercise
+//   this with the same vendored vector. Real deployments commit to a
+//   per-circuit public-inputs schema in their design doc.
+
+contract ZkVerifiedOracle(
+    byte[] init_verifying_key,
+    pubkey init_recipient,
+    int init_threshold,
+    pubkey init_guardian1,
+    pubkey init_guardian2,
+    pubkey init_guardian3
+) {
+    byte[] verifying_key = init_verifying_key;
+    pubkey recipient = init_recipient;
+    int threshold = init_threshold;
+    pubkey guardian1 = init_guardian1;
+    pubkey guardian2 = init_guardian2;
+    pubkey guardian3 = init_guardian3;
+
+    function requireValidConfiguration() {
+        require(threshold >= 1);
+        require(threshold <= 3);
+        require(guardian1 != guardian2);
+        require(guardian1 != guardian3);
+        require(guardian2 != guardian3);
+    }
+
+    function signerIsGuardian(pubkey candidate): bool {
+        return(candidate == guardian1 || candidate == guardian2 || candidate == guardian3);
+    }
+
+    function distinctSigners(pubkey signer1, pubkey signer2, pubkey signer3): bool {
+        return(signer1 != signer2 && signer1 != signer3 && signer2 != signer3);
+    }
+
+    function approvalCount(pubkey signer1, sig sig1, pubkey signer2, sig sig2, pubkey signer3, sig sig3): int {
+        int approvals = 0;
+        if (signerIsGuardian(signer1) && checkSig(sig1, signer1)) {
+            approvals = approvals + 1;
+        }
+        if (signerIsGuardian(signer2) && checkSig(sig2, signer2)) {
+            approvals = approvals + 1;
+        }
+        if (signerIsGuardian(signer3) && checkSig(sig3, signer3)) {
+            approvals = approvals + 1;
+        }
+        return(approvals);
+    }
+
+    function requireExactPayout(pubkey destination) {
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
+    }
+
+    entrypoint function publish(
+        pubkey signer1, sig sig1,
+        pubkey signer2, sig sig2,
+        pubkey signer3, sig sig3,
+        byte[] proof,
+        byte[32] pi0,
+        byte[32] pi1,
+        byte[32] pi2,
+        byte[32] pi3,
+        byte[32] pi4
+    ) {
+        requireValidConfiguration();
+        require(distinctSigners(signer1, signer2, signer3));
+        require(approvalCount(signer1, sig1, signer2, sig2, signer3, sig3) >= threshold);
+        require(OpGroth16Verify(verifying_key, proof, [pi0, pi1, pi2, pi3, pi4]));
+        requireExactPayout(recipient);
+    }
+}
