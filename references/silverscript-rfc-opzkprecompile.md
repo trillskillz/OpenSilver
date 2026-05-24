@@ -133,6 +133,8 @@ Low for the narrow goal of exposing the builtin name. The change is two one-line
 
 That means this PR may need to be paired with either expression statements / explicit push syntax or a structured higher-arity builtin lowering before downstream projects can write complete ZK-aware contracts in plain `.sil`.
 
+**Newest prototype result:** a local helper shaped like `OpGroth16Verify(vk, proof, [a, b, c, ...])` compiled successfully once the compiler was taught to custom-lower the third argument's array-literal elements into separate verifier operands, then append `n_public_inputs`, `proof`, `vk`, and the fixed Groth16 tag (`0x20`) before emitting `OpZkPrecompile`. The upstream `silverscript-lang` `examples_tests` suite remained green (`26/26`) with that prototype. This is currently the clearest concrete path that avoids raw push syntax without hard-coding one builtin per public-input count.
+
 ## Adoption path for OpenSilver
 
 Once the patch lands:
