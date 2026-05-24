@@ -10,7 +10,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 18/18 vitest compile suite + 53/53 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 19/19 vitest files (22/22 tests) + 53/53 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -115,7 +115,12 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
   - second-period scheduled mint
   - final-drain mint where the remaining allocation is less than `releasePerPeriod`
 - This lifts the runtime suite from **46 → 53** passing tests and proves the basic controller+asset lifecycle shape for the 4.x family, including vesting continuation across multiple periods and terminal controller drain behavior.
-- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is SDK glue and richer KCC20 multi-step helpers.
+- Added first-pass SDK glue in `sdk/src/index.ts` plus `tests/kcc20-sdk.test.ts` covering:
+  - KCC20 controller contract/doc path selection
+  - normalized controller-state builders for Ownable/Pausable/Capped/Vesting
+  - asset/controller constructor-arg builders
+  - three-phase lifecycle planning (controller genesis → asset genesis → issuance)
+- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is richer KCC20 multi-step helpers and actual compile/deploy integration on top of the new SDK surface.
 
 ## Phase 4 — KCC20 token patterns (current)
 

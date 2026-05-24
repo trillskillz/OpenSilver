@@ -11,7 +11,7 @@ Six patterns. The headline architectural rule, lifted from the upstream KCC20 bo
 | 4.5 | KCC20Vesting | (4.1 reused) | TODO `contracts/tokens/kcc20-vesting.sil` | Stub doc only |
 | 4.6 | KCC20Snapshot | (touches the asset; deferred to KIP-21 lane stability) | — | Stub doc only |
 
-Each stub doc captures the *intended* shape so the next session can pick up implementation without re-deriving design choices. The asset contract is stable across 4.2-4.5; the only difference between those variants is the controller covenant they bind to.
+The asset contract is stable across 4.2-4.5; the only difference between those variants is the controller covenant they bind to. The repo now also has first-pass SDK glue in `sdk/src/index.ts` for selecting controller paths, normalizing controller state, building constructor args, and planning the three-phase KCC20 lifecycle.
 
 ## Why this architecture matters
 

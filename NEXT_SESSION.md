@@ -94,11 +94,12 @@ All items above complete → flip `STATUS.md` to reflect Phase 2 completion and 
 
 Pattern 4.1 KCC20 asset contract is scaffolded with vitest compile coverage. Five controller-covenant variants have stub docs at `docs/patterns/tokens/`; each captures the intended shape so implementation can pick up without re-deriving design choices. In order:
 
-1. **4.4 KCC20Capped** — runtime lifecycle coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (init/asset binding + happy-path mint + over-cap reject). Next work: SDK glue for the three-output mint shape.
+1. **4.4 KCC20Capped** — runtime lifecycle coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (init/asset binding + happy-path mint + over-cap reject). SDK helper groundwork now lives in `sdk/src/index.ts`; next work is richer transaction-shape helpers for the three-output mint path.
 2. **4.3 KCC20Pausable** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pause + unpause + paused-mint reject).
 3. **4.2 KCC20Ownable** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pending-transfer mint + accepted-admin mint + stale-admin reject).
 4. **4.5 KCC20Vesting** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pre-cliff reject + first scheduled mint + second-period mint + final-drain mint).
 5. **4.6 KCC20Snapshot** — wait for KIP-21 lane stability before implementing.
+6. **KCC20 SDK follow-through** — extend the new helper surface beyond pure planning/state normalization into compile/deploy glue once the desired compiler integration path is chosen.
 
 Each variant needs:
 - `contracts/tokens/<name>.sil` controller covenant
