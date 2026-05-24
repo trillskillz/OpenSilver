@@ -10,7 +10,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 19/19 vitest files (26/26 tests) + 53/53 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 20/20 vitest files (27/27 tests) + 53/53 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -125,7 +125,9 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
   - a real TS-side `silverc` wrapper (`buildSilvercCommandPlan` + `runSilvercCompileSpec`) that writes ctor-args JSON, executes the compiler, and parses the emitted JSON artifact
   - deploy-ready compiled flow assembly (`buildKcc20DeployFlow`) that combines lifecycle planning, transaction shapes, compile specs, and wrapper-produced artifacts into one object
   - broadcast-ready transaction assembly inputs (`buildKcc20BroadcastReadyFlow`) that map compiled stages into named input/output/signer payloads for future Kaspa transaction builders
-- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is swapping these broadcast-ready assembly objects into a real Kaspa transaction builder/broadcaster integration.
+- Added a Kaspa-facing integration layer in `integrations/src/index.ts` plus `tests/kcc20-integrations.test.ts` covering:
+  - `buildKaspaKcc20TransactionPackage`, which converts broadcast-ready KCC20 assemblies into package objects for downstream wallet/builder/broadcaster code
+- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is swapping these package objects into a real Kaspa transaction builder/broadcaster implementation.
 
 ## Phase 4 — KCC20 token patterns (current)
 
