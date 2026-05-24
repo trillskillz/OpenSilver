@@ -133,14 +133,16 @@ Low for the narrow goal of exposing the builtin name. The change is two one-line
 
 That means this PR may need to be paired with either expression statements / explicit push syntax or a structured higher-arity builtin lowering before downstream projects can write complete ZK-aware contracts in plain `.sil`.
 
-**Newest prototype result:** a local helper shaped like `OpGroth16Verify(vk, proof, [a, b, c, ...])` compiled successfully once the compiler was taught to custom-lower the third argument's array-literal elements into separate verifier operands, then append `n_public_inputs`, `proof`, `vk`, and the fixed Groth16 tag (`0x20`) before emitting `OpZkPrecompile`. The upstream `silverscript-lang` `examples_tests` suite remained green (`26/26`) with that prototype. This is currently the clearest concrete path that avoids raw push syntax without hard-coding one builtin per public-input count.
+**Newest prototype result:** a local helper shaped like `OpGroth16Verify(vk, proof, [a, b, c, ...])` compiled successfully once the compiler was taught to custom-lower the third argument's array-literal elements into separate verifier operands, then append `n_public_inputs`, `proof`, `vk`, and the fixed Groth16 tag (`0x20`) before emitting `OpZkPrecompile`. The upstream `silverscript-lang` `examples_tests` suite remained green (`27/27`) with that prototype. This is currently the clearest concrete path that avoids raw push syntax without hard-coding one builtin per public-input count.
+
+**OpenSilver local-tooling follow-up:** `npm run patch:silverc:zk` now reproduces that helper surface against the pinned upstream compiler ref and AST-compiles both tracked smoke contracts: `contracts/zk/opzkprecompile-smoke.sil` and `contracts/zk/opgroth16verify-smoke.sil`.
 
 ## Adoption path for OpenSilver
 
 Once the patch lands:
 
 1. **Re-pin upstream silverscript-lang** in OpenSilver to the new commit.
-2. **Implement Pattern 5.1 Verified Computation** at `contracts/zk/verified-computation.sil` using the design at `docs/patterns/zk/verified-computation.md`. The "Intended `.sil` shape" section already drops in cleanly with `OpZkPrecompile()` as the call.
+2. **Implement Pattern 5.1 Verified Computation** at `contracts/zk/verified-computation.sil` using the design at `docs/patterns/zk/verified-computation.md`. The remaining design gap is no longer opcode exposure alone; it is the general authoring surface for variable public-input lists on top of the helper direction.
 3. **Ship `sdk/zk/groth16.ts`** with the canonical stack-order builder (`buildGroth16Witness(opts)`) so pattern authors don't reverse the verifier's pop order. Shape captured in `docs/patterns/zk/README.md`.
 4. **Add a runtime test** that compiles `verified-computation.sil` with a real Groth16 fixture VK+proof+inputs and exercises the verifier through `kaspa-txscript`'s engine. We already have a working Groth16 test vector in upstream `rusty-kaspa/crypto/txscript/src/zk_precompiles/groth16/mod.rs:try_verify_stack` — vendor the hex constants into the OpenSilver test.
 5. **Repeat for 5.3, 5.2, 5.4** in order, per `docs/patterns/zk/README.md`.

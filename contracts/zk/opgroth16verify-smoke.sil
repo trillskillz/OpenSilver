@@ -1,0 +1,24 @@
+pragma silverscript ^0.1.0;
+
+// Experimental Phase 5 helper-surface smoke test.
+//
+// This contract exists to prove that the local patched silverc can parse and
+// typecheck the structured Groth16 helper shape:
+//
+//   OpGroth16Verify(verifying_key, proof, [a, b, c, ...])
+//
+// It is still compile-only scaffolding, not a runtime-usable verifier.
+
+contract OpGroth16VerifySmoke() {
+    entrypoint function smoke(
+        byte[32] a,
+        byte[32] b,
+        byte[32] c,
+        byte[32] d,
+        byte[32] e,
+        byte[] proof,
+        byte[] verifying_key
+    ) {
+        require(OpGroth16Verify(verifying_key, proof, [a, b, c, d, e]));
+    }
+}

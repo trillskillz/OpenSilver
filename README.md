@@ -64,7 +64,11 @@ npm run test:runtime
 
 `npm run bootstrap:silverc` clones or refreshes the pinned upstream `kaspanet/silverscript` checkout under `upstream/silverscript/` and builds `target/debug/silverc` in-place. CI uses the same script, so local and hosted builds now share one bootstrap path.
 
-For the current Phase 5 experimental lane, `npm run patch:silverc:zk` applies OpenSilver's checked-in `OpZkPrecompile` patch to that pinned upstream checkout, rebuilds `silverc`, and smoke-tests the tracked contract `contracts/zk/opzkprecompile-smoke.sil` (a minimal `.sil` containing `require(OpZkPrecompile())`). That is for local prototyping until the upstream PR tracked in issue #3 lands.
+For the current Phase 5 experimental lane, `npm run patch:silverc:zk` applies OpenSilver's checked-in `OpZkPrecompile`/`OpGroth16Verify` patch to that pinned upstream checkout, rebuilds `silverc`, and smoke-tests both tracked contracts:
+- `contracts/zk/opzkprecompile-smoke.sil` — minimal builtin recognition
+- `contracts/zk/opgroth16verify-smoke.sil` — structured helper shape `OpGroth16Verify(vk, proof, [a, b, c, ...])`
+
+That gives OpenSilver a real local compiler-probing lane while the upstream PR tracked in issue #3 settles on the final authoring surface.
 
 ## Toolchain
 

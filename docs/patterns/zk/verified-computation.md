@@ -56,19 +56,18 @@ contract VerifiedComputation(
     ) {
         requireProver(prover, prover_sig);
 
-        // OpZkPrecompile (tag 0x20 = Groth16) consumes the canonical stack:
-        //   [..., public_input_{n-1}, ..., public_input_0,
-        //         n_public_inputs (i32),
-        //         proof,
-        //         verifying_key]
-        // The helper here writes the stack in the engine's pop order.
-        require(OpZkPrecompile(
-            0x20,
-            verifying_key,
-            proof,
-            n_public_inputs,
-            public_inputs_concat
-        ));
+        // Current best-fit SilverScript surface is a structured helper that
+        // custom-lowers array-literal public inputs into the canonical
+        // verifier stack shape before emitting OpZkPrecompile(tag=0x20).
+        // Local compiler prototyping proved a fixed-shape form like
+        //   OpGroth16Verify(verifying_key, proof, [pi0, pi1, pi2, ...])
+        // can compile cleanly.
+        //
+        // The remaining blocker for this contract is the *general* authoring
+        // surface for variable `n_public_inputs`: SilverScript still needs a
+        // way to turn witness bytes into that helper-ready input list without
+        // dropping back to raw push syntax.
+        require(/* future helper call over decoded public inputs */ true);
 
         requireExactPayout(recipient);
     }
