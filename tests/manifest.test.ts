@@ -33,9 +33,13 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[11]?.status).toBe('scaffolded');
     expect(patterns[12]?.id).toBe('krc20.kcc20-reference');
     expect(patterns[12]?.status).toBe('scaffolded');
-    expect(patterns[13]?.id).toBe('krc20.kcc20-pausable');
+    expect(patterns[13]?.id).toBe('krc20.kcc20-ownable');
     expect(patterns[13]?.status).toBe('scaffolded');
-    expect(patterns[14]?.id).toBe('krc20.kcc20-capped');
+    expect(patterns[14]?.id).toBe('krc20.kcc20-pausable');
     expect(patterns[14]?.status).toBe('scaffolded');
+    expect(patterns[15]?.id).toBe('krc20.kcc20-capped');
+    expect(patterns[15]?.status).toBe('scaffolded');
+    expect(patterns[16]?.id).toBe('krc20.kcc20-vesting');
+    expect(patterns[16]?.status).toBe('scaffolded');
   });
 });

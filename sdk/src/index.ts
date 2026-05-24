@@ -143,6 +143,16 @@ export const patternManifest: PatternManifestEntry[] = [
     docPath: 'docs/patterns/tokens/kcc20.md',
   },
   {
+    id: 'krc20.kcc20-ownable',
+    title: 'KCC20Ownable',
+    phase: 'krc20',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Controller covenant that rotates KCC20 mint authority through an Ownable-style two-step admin handoff.',
+    contractPath: 'contracts/tokens/kcc20-ownable.sil',
+    docPath: 'docs/patterns/tokens/kcc20-ownable.md',
+  },
+  {
     id: 'krc20.kcc20-pausable',
     title: 'KCC20Pausable',
     phase: 'krc20',
@@ -161,6 +171,16 @@ export const patternManifest: PatternManifestEntry[] = [
     summary: 'Controller covenant that caps KCC20 issuance through a decremented remaining-allowance state budget.',
     contractPath: 'contracts/tokens/kcc20-capped.sil',
     docPath: 'docs/patterns/tokens/kcc20-capped.md',
+  },
+  {
+    id: 'krc20.kcc20-vesting',
+    title: 'KCC20Vesting',
+    phase: 'krc20',
+    stateful: true,
+    status: 'scaffolded',
+    summary: 'Controller covenant that releases KCC20 issuance on a beneficiary-signed vesting schedule.',
+    contractPath: 'contracts/tokens/kcc20-vesting.sil',
+    docPath: 'docs/patterns/tokens/kcc20-vesting.md',
   },
 ];
 

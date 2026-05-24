@@ -1,0 +1,162 @@
+pragma silverscript ^0.1.0;
+
+// KCC20Ownable — admin-rotated controller covenant. OpenSilver Pattern 4.2.
+//
+// This keeps the Pattern 4.1 KCC20 asset contract unchanged and reuses the
+// Ownable v1 `pubkey + bool has_pending_admin + pending_admin` shape for
+// controller-side mint authority rotation.
+
+contract KCC20Ownable(
+    pubkey initAdmin,
+    bool initHasPendingAdmin,
+    pubkey initPendingAdmin,
+    byte[32] initKCC20Covid,
+    bool initInitialized,
+    int templatePrefixLen,
+    int templateSuffixLen,
+    byte[32] expectedTemplateHash,
+    byte[] templatePrefix,
+    byte[] templateSuffix
+) {
+    pubkey admin = initAdmin;
+    bool hasPendingAdmin = initHasPendingAdmin;
+    pubkey pendingAdmin = initPendingAdmin;
+    byte[32] kcc20Covid = initKCC20Covid;
+    bool initialized = initInitialized;
+
+    struct KCC20State {
+        byte[32] ownerIdentifier;
+        byte identifierType;
+        int amount;
+        bool isMinter;
+    }
+
+    byte constant IDENTIFIER_COVENANT_ID = 0x02;
+
+    function requireAdmin(pubkey adminPk, sig adminSig, State prevState) {
+        require(adminPk == prevState.admin);
+        require(checkSig(adminSig, adminPk));
+    }
+
+    function requirePendingAdmin(pubkey pendingAdminPk, sig pendingAdminSig, State prevState) {
+        require(prevState.hasPendingAdmin);
+        require(pendingAdminPk == prevState.pendingAdmin);
+        require(checkSig(pendingAdminSig, pendingAdminPk));
+    }
+
+    function calcInAmount() : int {
+        KCC20State kcc20PrevState = readInputStateWithTemplate(
+            OpCovInputIdx(kcc20Covid, 0),
+            templatePrefixLen,
+            templateSuffixLen,
+            expectedTemplateHash
+        );
+        return kcc20PrevState.amount;
+    }
+
+    function checkMinterKcc20NewState(KCC20State minterKcc20NewState) {
+        byte[32] controllerId = OpInputCovenantId(this.activeInputIndex);
+        require(minterKcc20NewState.ownerIdentifier == controllerId);
+        require(minterKcc20NewState.identifierType == IDENTIFIER_COVENANT_ID);
+        require(minterKcc20NewState.isMinter);
+
+        validateOutputStateWithTemplate(
+            OpCovOutputIdx(kcc20Covid, 0),
+            minterKcc20NewState,
+            templatePrefix,
+            templateSuffix,
+            expectedTemplateHash
+        );
+    }
+
+    function checkRecipientKcc20NewState(KCC20State recipientKcc20NewState) {
+        require(!recipientKcc20NewState.isMinter);
+        validateOutputStateWithTemplate(
+            OpCovOutputIdx(kcc20Covid, 1),
+            recipientKcc20NewState,
+            templatePrefix,
+            templateSuffix,
+            expectedTemplateHash
+        );
+    }
+
+    #[covenant.singleton]
+    function init(State prevState, State newState, pubkey adminPk, sig adminSig) {
+        require(!prevState.initialized);
+        requireAdmin(adminPk, adminSig, prevState);
+        require(newState.admin == prevState.admin);
+        require(newState.hasPendingAdmin == prevState.hasPendingAdmin);
+        require(newState.pendingAdmin == prevState.pendingAdmin);
+        require(newState.kcc20Covid == OpOutputCovenantId(0));
+        require(newState.initialized);
+    }
+
+    #[covenant.singleton(mode = transition)]
+    function propose_admin_transfer(State prevState, pubkey nextAdmin, pubkey adminPk, sig adminSig) : (State) {
+        require(prevState.initialized);
+        requireAdmin(adminPk, adminSig, prevState);
+        require(nextAdmin != prevState.admin);
+        return({
+            admin: prevState.admin,
+            hasPendingAdmin: true,
+            pendingAdmin: nextAdmin,
+            kcc20Covid: prevState.kcc20Covid,
+            initialized: prevState.initialized
+        });
+    }
+
+    #[covenant.singleton(mode = transition)]
+    function accept_admin_transfer(State prevState, pubkey pendingAdminPk, sig pendingAdminSig) : (State) {
+        require(prevState.initialized);
+        requirePendingAdmin(pendingAdminPk, pendingAdminSig, prevState);
+        return({
+            admin: prevState.pendingAdmin,
+            hasPendingAdmin: false,
+            pendingAdmin: prevState.pendingAdmin,
+            kcc20Covid: prevState.kcc20Covid,
+            initialized: prevState.initialized
+        });
+    }
+
+    #[covenant.singleton(mode = transition)]
+    function cancel_admin_transfer(State prevState, pubkey adminPk, sig adminSig) : (State) {
+        require(prevState.initialized);
+        require(prevState.hasPendingAdmin);
+        requireAdmin(adminPk, adminSig, prevState);
+        return({
+            admin: prevState.admin,
+            hasPendingAdmin: false,
+            pendingAdmin: prevState.pendingAdmin,
+            kcc20Covid: prevState.kcc20Covid,
+            initialized: prevState.initialized
+        });
+    }
+
+    #[covenant.singleton]
+    function mint(
+        State prevState,
+        State newState,
+        pubkey adminPk,
+        sig adminSig,
+        KCC20State minterKcc20NewState,
+        KCC20State recipientKcc20NewState
+    ) {
+        require(prevState.initialized);
+        requireAdmin(adminPk, adminSig, prevState);
+        require(newState.admin == prevState.admin);
+        require(newState.hasPendingAdmin == prevState.hasPendingAdmin);
+        require(newState.pendingAdmin == prevState.pendingAdmin);
+        require(newState.kcc20Covid == prevState.kcc20Covid);
+        require(newState.initialized);
+
+        require(OpCovOutputCount(kcc20Covid) == 2);
+        require(OpCovInputCount(kcc20Covid) == 1);
+
+        checkMinterKcc20NewState(minterKcc20NewState);
+        checkRecipientKcc20NewState(recipientKcc20NewState);
+
+        int inAmount = calcInAmount();
+        int mintedAmount = minterKcc20NewState.amount + recipientKcc20NewState.amount - inAmount;
+        require(mintedAmount > 0);
+    }
+}

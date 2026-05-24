@@ -96,8 +96,8 @@ Pattern 4.1 KCC20 asset contract is scaffolded with vitest compile coverage. Fiv
 
 1. **4.4 KCC20Capped** — scaffold landed at `contracts/tokens/kcc20-capped.sil`. Next work: SDK glue for the three-output mint shape and runtime tests against the asset contract.
 2. **4.3 KCC20Pausable** — scaffold landed at `contracts/tokens/kcc20-pausable.sil`. Next work: runtime coverage for pause/unpause + paused-mint rejection.
-3. **4.2 KCC20Ownable** — reuses Ownable's `pubkey + has_pending_admin` shape on top of the controller covenant.
-4. **4.5 KCC20Vesting** — reuses the `termination = allowed` single-return shape from Phase 3.7/3.8 (proven runtime-compatible).
+3. **4.2 KCC20Ownable** — scaffold landed at `contracts/tokens/kcc20-ownable.sil`. Next work: runtime coverage for admin handoff + mint-authority persistence during pending transfer.
+4. **4.5 KCC20Vesting** — scaffold landed at `contracts/tokens/kcc20-vesting.sil`. Next work: runtime coverage for schedule-gated issuance and decide whether a future terminating variant is worth the lineage complexity.
 5. **4.6 KCC20Snapshot** — wait for KIP-21 lane stability before implementing.
 
 Each variant needs:

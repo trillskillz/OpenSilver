@@ -1,0 +1,154 @@
+pragma silverscript ^0.1.0;
+
+// KCC20Vesting — schedule-gated issuance controller. OpenSilver Pattern 4.5.
+//
+// This reuses the Pattern 4.1 KCC20 asset contract and applies Vesting-like
+// issuance accounting at the controller layer. To avoid a final-issuance
+// lineage mismatch between the controller and the KCC20 minter branch, the
+// controller remains alive after the last mint with mintedAmount == totalAllocation.
+
+contract KCC20Vesting(
+    pubkey admin,
+    pubkey beneficiary,
+    int initTotalAllocation,
+    int initMintedAmount,
+    int initCliffTime,
+    int initPeriod,
+    int initReleasePerPeriod,
+    byte[32] initKCC20Covid,
+    bool initInitialized,
+    int templatePrefixLen,
+    int templateSuffixLen,
+    byte[32] expectedTemplateHash,
+    byte[] templatePrefix,
+    byte[] templateSuffix
+) {
+    int totalAllocation = initTotalAllocation;
+    int mintedAmount = initMintedAmount;
+    int cliffTime = initCliffTime;
+    int period = initPeriod;
+    int releasePerPeriod = initReleasePerPeriod;
+    byte[32] kcc20Covid = initKCC20Covid;
+    bool initialized = initInitialized;
+
+    struct KCC20State {
+        byte[32] ownerIdentifier;
+        byte identifierType;
+        int amount;
+        bool isMinter;
+    }
+
+    byte constant IDENTIFIER_PUBKEY = 0x00;
+    byte constant IDENTIFIER_COVENANT_ID = 0x02;
+
+    function requireAdmin(sig adminSig) {
+        require(checkSig(adminSig, admin));
+    }
+
+    function requireBeneficiary(pubkey beneficiaryPk, sig beneficiarySig) {
+        require(beneficiaryPk == beneficiary);
+        require(checkSig(beneficiarySig, beneficiaryPk));
+    }
+
+    function requireValidSchedule(State prevState) {
+        require(prevState.totalAllocation > 0);
+        require(prevState.mintedAmount >= 0);
+        require(prevState.totalAllocation >= prevState.mintedAmount);
+        require(prevState.releasePerPeriod > 0);
+        require(prevState.period >= 0);
+    }
+
+    function calcInAmount() : int {
+        KCC20State kcc20PrevState = readInputStateWithTemplate(
+            OpCovInputIdx(kcc20Covid, 0),
+            templatePrefixLen,
+            templateSuffixLen,
+            expectedTemplateHash
+        );
+        return kcc20PrevState.amount;
+    }
+
+    function checkMinterKcc20NewState(KCC20State minterKcc20NewState) {
+        byte[32] controllerId = OpInputCovenantId(this.activeInputIndex);
+        require(minterKcc20NewState.ownerIdentifier == controllerId);
+        require(minterKcc20NewState.identifierType == IDENTIFIER_COVENANT_ID);
+        require(minterKcc20NewState.isMinter);
+
+        validateOutputStateWithTemplate(
+            OpCovOutputIdx(kcc20Covid, 0),
+            minterKcc20NewState,
+            templatePrefix,
+            templateSuffix,
+            expectedTemplateHash
+        );
+    }
+
+    function checkRecipientKcc20NewState(KCC20State recipientKcc20NewState, int claimAmount) {
+        require(recipientKcc20NewState.ownerIdentifier == byte[32](beneficiary));
+        require(recipientKcc20NewState.identifierType == IDENTIFIER_PUBKEY);
+        require(recipientKcc20NewState.amount == claimAmount);
+        require(!recipientKcc20NewState.isMinter);
+        validateOutputStateWithTemplate(
+            OpCovOutputIdx(kcc20Covid, 1),
+            recipientKcc20NewState,
+            templatePrefix,
+            templateSuffix,
+            expectedTemplateHash
+        );
+    }
+
+    #[covenant.singleton]
+    function init(State prevState, State newState, sig adminSig) {
+        requireValidSchedule(prevState);
+        require(!prevState.initialized);
+        require(newState.totalAllocation == prevState.totalAllocation);
+        require(newState.mintedAmount == prevState.mintedAmount);
+        require(newState.cliffTime == prevState.cliffTime);
+        require(newState.period == prevState.period);
+        require(newState.releasePerPeriod == prevState.releasePerPeriod);
+        require(newState.kcc20Covid == OpOutputCovenantId(0));
+        require(newState.initialized);
+        requireAdmin(adminSig);
+    }
+
+    #[covenant.singleton]
+    function mint(
+        State prevState,
+        State newState,
+        pubkey beneficiaryPk,
+        sig beneficiarySig,
+        KCC20State minterKcc20NewState,
+        KCC20State recipientKcc20NewState
+    ) {
+        requireValidSchedule(prevState);
+        require(prevState.initialized);
+        requireBeneficiary(beneficiaryPk, beneficiarySig);
+        require(tx.time >= prevState.cliffTime);
+        require(prevState.mintedAmount < prevState.totalAllocation);
+
+        require(OpCovOutputCount(kcc20Covid) == 2);
+        require(OpCovInputCount(kcc20Covid) == 1);
+
+        checkMinterKcc20NewState(minterKcc20NewState);
+
+        int remaining = prevState.totalAllocation - prevState.mintedAmount;
+        int claimAmount = prevState.releasePerPeriod;
+        if (remaining <= prevState.releasePerPeriod) {
+            claimAmount = remaining;
+        }
+
+        checkRecipientKcc20NewState(recipientKcc20NewState, claimAmount);
+
+        int inAmount = calcInAmount();
+        int mintedDelta = minterKcc20NewState.amount + recipientKcc20NewState.amount - inAmount;
+        require(mintedDelta == claimAmount);
+
+        require(newState.totalAllocation == prevState.totalAllocation);
+        require(newState.mintedAmount == prevState.mintedAmount + claimAmount);
+        require(newState.cliffTime == prevState.cliffTime + prevState.period);
+        require(newState.period == prevState.period);
+        require(newState.releasePerPeriod == prevState.releasePerPeriod);
+        require(newState.kcc20Covid == prevState.kcc20Covid);
+        require(newState.initialized);
+    }
+}
