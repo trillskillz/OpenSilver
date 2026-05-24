@@ -1,0 +1,86 @@
+pragma silverscript ^0.1.0;
+
+// Pattern 5.1 — Verified Computation.
+//
+// COMPILE STATUS: requires the OpenSilver Phase-5 compiler patch
+// (`npm run patch:silverc:zk`, which applies
+// `patches/silverscript-opzkprecompile.patch` to the pinned upstream
+// silverscript clone). The vanilla upstream silverc at commit `2c46231`
+// does NOT expose `OpGroth16Verify`. See `references/silverscript-rfc-opzkprecompile.md`
+// and the open upstream PR `kaspanet/silverscript#125`.
+//
+// What it does:
+//   A covenant that releases funds to a designated recipient on receipt
+//   of a valid Groth16 proof + prover signature. The verifying key, the
+//   recipient, the prover pubkey, and the committed public-input count
+//   are all deploy-time contract state — never witness-supplied. The
+//   payout shape is the canonical OpenSilver `requireExactPayout(...)`
+//   used across Phase 3.
+//
+// Why both a proof AND a prover signature:
+//   The proof attests *what was computed*. The prover signature attests
+//   *who is submitting it*. Without the prover signature, anyone holding
+//   a valid (proof, public_inputs) tuple could spend — for some use
+//   cases that is acceptable (open-redeem proofs), but for the canonical
+//   reference pattern we keep both layers so the design is conservative
+//   by default. Drop `requireProver(...)` if you genuinely want
+//   open-redeem semantics, and document it in your fork's WHEN NOT TO
+//   USE THIS.
+//
+// Why fixed N public inputs in the type signature:
+//   `OpGroth16Verify` (per the OpenSilver patch + RFC) takes its public
+//   inputs as an array literal so the compiler can flatten them into
+//   verifier-order stack pushes. Array length is fixed at compile time
+//   because SilverScript's `byte[32][N]` is a fixed-size array. The
+//   instance below uses 5 public inputs to match the Groth16 fixture in
+//   `references/fixtures/groth16-opzkprecompile-fixture.json`. For a
+//   different circuit, recompile a sibling contract with the correct N.
+//
+// Security rules carried in from KIP-16 (see `references/kips/SUMMARY.md`):
+//   - Verifying key is contract state, never witness — caller cannot
+//     swap circuits.
+//   - Prover signature is contract state, never witness — caller cannot
+//     swap who's authorized to submit.
+//   - Failure surfaces as `TxScriptError::ZkIntegrity(String)`. The
+//     script aborts; pattern code cannot discriminate "proof failed"
+//     from "operand deserialise failed".
+//   - Pre-mainnet: this pattern is TN12-only until the `TODO(covpp-mainnet)`
+//     marker on rusty-kaspa's `Groth16Precompile::verify_zk` clears.
+
+contract VerifiedComputation(
+    byte[] init_verifying_key,
+    pubkey init_recipient,
+    pubkey init_prover
+) {
+    byte[] verifying_key = init_verifying_key;
+    pubkey recipient = init_recipient;
+    pubkey prover = init_prover;
+
+    function requireProver(pubkey prover_pk, sig prover_sig) {
+        require(prover_pk == prover);
+        require(checkSig(prover_sig, prover_pk));
+    }
+
+    function requireExactPayout(pubkey destination) {
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
+    }
+
+    entrypoint function verify_and_release(
+        pubkey prover_pk,
+        sig prover_sig,
+        byte[] proof,
+        byte[32] pi0,
+        byte[32] pi1,
+        byte[32] pi2,
+        byte[32] pi3,
+        byte[32] pi4
+    ) {
+        requireProver(prover_pk, prover_sig);
+        require(OpGroth16Verify(verifying_key, proof, [pi0, pi1, pi2, pi3, pi4]));
+        requireExactPayout(recipient);
+    }
+}

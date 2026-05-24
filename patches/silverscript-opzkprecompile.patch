@@ -36,7 +36,7 @@ index 65baf70..0000000 100644
 +        return Err(CompilerError::Unsupported("OpGroth16Verify() expects at least one public input".to_string()));
 +    }
 +
-+    for public_input in public_inputs {
++    for public_input in public_inputs.iter().rev() {
 +        compile_call_arg_with_context(ctx, public_input)?;
 +    }
 +    ctx.builder.add_i64(public_inputs.len() as i64)?;
