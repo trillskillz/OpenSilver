@@ -123,7 +123,9 @@ And matching `examples_tests.rs::test_examples_compile` should add `zk_minimal.s
 
 ## Risk
 
-Low. The change is two one-liners in compile.rs + debug_value_types.rs + one stdlib doc comment. The opcode itself is already audited engine-side; this PR only routes a builtin name to the existing emitter. The 0-arg arity choice deliberately avoids the tag-specific operand schema, leaving that to higher-level wrappers.
+Low for the narrow goal of exposing the builtin name. The change is two one-liners in compile.rs + debug_value_types.rs + one stdlib doc comment. The opcode itself is already audited engine-side; this PR only routes a builtin name to the existing emitter.
+
+**Follow-up caveat discovered during downstream prototyping:** in current SilverScript syntax, a 0-arg builtin exposure alone does not appear sufficient for real contract authoring because the parser rejects raw expression statements that would push verifier operands before `OpZkPrecompile()`. So this PR may need to be paired with either expression statements / explicit push syntax or a higher-arity builtin lowering before downstream projects can write complete ZK-aware contracts in plain `.sil`.
 
 ## Adoption path for OpenSilver
 

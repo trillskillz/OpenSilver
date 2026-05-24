@@ -131,10 +131,10 @@ Four ZK-aware patterns specified in `docs/patterns/zk/` with full design + inten
 
 Three unblock paths (in order of preference):
 
-1. **Watch / drive `kaspanet/silverscript#125` to merge**. The RFC patch sketch is now an actual upstream PR with the recommended title and a minimal compile test. Track discussion/review there and re-pin OpenSilver the moment it lands.
-2. **Use the local experimental patch lane** — `npm run patch:silverc:zk` applies `patches/silverscript-opzkprecompile.patch` to the pinned upstream checkout, rebuilds `silverc`, and smoke-tests the tracked contract `contracts/zk/opzkprecompile-smoke.sil`. Use this for local Phase-5 prototyping until path 1 lands upstream.
-3. **Raw-script splice** at the OpenSilver compile pipeline level: run `silverc`, then walk the emitted bytecode and insert `OpZkPrecompile` (`0xa6`) at a marker-comment position. Brittle stopgap; remove the moment path 1 lands.
-4. **Wait** — silverscript-lang is under active development; the builtin may land before Toccata activation. Worth a low-priority tracking question to Newman.
+1. **Resolve the SilverScript authoring surface around `OpZkPrecompile`**. `kaspanet/silverscript#125` exposes the builtin name, but local prototyping showed that a 0-arg builtin is not enough: the parser rejects raw operand-push statements like `a; b; 2; proof; vk;`. Track discussion on the PR and determine whether the right fix is expression statements / explicit push syntax or a higher-arity builtin lowering.
+2. **Use the local experimental patch lane** — `npm run patch:silverc:zk` applies `patches/silverscript-opzkprecompile.patch` to the pinned upstream checkout, rebuilds `silverc`, and smoke-tests the tracked contract `contracts/zk/opzkprecompile-smoke.sil`. Use this for local compiler probing and future prototyping once the authoring surface is clarified.
+3. **Raw-script splice** at the OpenSilver compile pipeline level: run `silverc`, then walk the emitted bytecode and insert `OpZkPrecompile` (`0xa6`) at a marker-comment position. Brittle stopgap; remove the moment a proper front-end surface lands.
+4. **Re-pin OpenSilver immediately if/when the upstream fix lands**, then implement 5.1 Verified Computation first.
 
 Implementation order once unblocked:
 
