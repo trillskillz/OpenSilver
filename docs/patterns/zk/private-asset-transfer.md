@@ -1,6 +1,19 @@
 # Private Asset Transfer — Pattern 5.2
 
-Status: DESIGN. Blocked on silverscript-lang exposing `OpZkPrecompile`.
+Status: **v1 SCAFFOLDED + RUNTIME-VERIFIED (local patch lane, covenant-side only)**. Contract at `contracts/zk/private-asset-transfer.sil` compiles via `npm run patch:silverc:zk`. Three runtime tests in `runtime-tests/tests/zk_runtime.rs`:
+
+- `private_asset_transfer_accepts_valid_proof_with_pinned_outputs` — fixture's `publicInputs[0]` is set as the deploy-time `commitment_root`; the contract verifies the proof, then pins `tx.outputs[0]` to `(amount, P2PK(publicInputs[2]))`. Engine accepts.
+- `private_asset_transfer_rejects_wrong_commitment_root` — same fixture but the contract is deployed with a DIFFERENT `commitment_root`. The `require(pi_commitment_root == commitment_root)` gate fires before proof verification.
+- `private_asset_transfer_rejects_payout_to_wrong_recipient` — valid proof, matching commitment_root, but the output routes to a different recipient than `pi_recipient`. The `requirePayoutToPiRecipient` gate fires.
+
+**v1 honestly-documented limitations (the circuit half is missing):**
+
+1. **No on-chain nullifier accumulator.** Real production needs a stateful continuation tracking spent nullifiers. v1 leaves this to the deploy lifecycle (single-use per deployment, commitment_root baked at deploy). A future v2 should add a `nullifier_root` state field updated via singleton transition, with the proof attesting `new_root = insert(old_root, nullifier)`.
+2. **No amount extraction from public inputs.** Amount is also deploy-time state. Real circuits would bind amount into a dedicated public-input slot — that requires per-circuit Fr ↔ i64 codecs which are circuit-specific.
+3. **The fixture's `publicInputs[2]` is a BN254 field element, not a real secp256k1 x-only point.** The engine compares scriptPubKey bytes verbatim, so an "invalid pubkey" still produces a deterministic P2PK shape that matches on both sides. A real circuit would gate `pi_recipient` on x-only-point validity inside the circuit.
+4. **No selective-disclosure guarantees beyond what the circuit attests.** This contract is a verifier; it cannot make guarantees about properties the prover's circuit does not encode. Threat model assessment must include the circuit, not just the covenant.
+
+The runtime tests prove **the covenant boundary is wired correctly against the standard Groth16 verifier surface**. They do NOT prove the circuit half does anything meaningful — that's the circuit author's responsibility, and depends on the specific commitment scheme + nullifier derivation chosen for a deployment.
 
 ## Summary
 

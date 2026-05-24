@@ -4,14 +4,14 @@
 PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
 PHASE_2_STATUS: IN_PROGRESS (monorepo scaffold landed; 12 Phase-3 patterns scaffolded; runtime harness live)
 PHASE_4_STATUS: IN_PROGRESS (KCC20 asset contract scaffolded as 4.1; KCC20Ownable, KCC20Pausable, KCC20Capped, and KCC20Vesting controllers scaffolded as 4.2/4.3/4.4/4.5)
-PHASE_5_STATUS: PATTERNS 5.1 + 5.3 + 5.4 LIVE LOCALLY (verified-computation.sil + zk-verified-oracle.sil + proof-stitched-multi-pattern.sil all compile via npm run patch:silverc:zk and runtime-verify real Groth16 proofs; 5.4 adds multi-input leader/delegate cov-context composition; only 5.2 still design-only; upstream PR kaspanet/silverscript#125 still OPEN — local patch lane carries a stack-order correctness fix that needs folding back before merge)
+PHASE_5_STATUS: ALL FOUR PATTERNS LIVE LOCALLY (5.1 verified-computation + 5.2 private-asset-transfer + 5.3 zk-verified-oracle + 5.4 proof-stitched-multi-pattern all compile via npm run patch:silverc:zk and runtime-verify real Groth16 proofs through kaspa-txscript. 5.2 covenant-side only; circuit-half remains the deployment author's responsibility. Upstream PR kaspanet/silverscript#125 still OPEN — local patch lane carries a stack-order correctness fix that needs folding back before merge.)
 PATTERNS_COMPLETE: 0/22 (12 Phase-3 scaffolds runtime-verified incl. owner-handoff + finalize_recovery; 5 Phase-4 patterns scaffolded; Phase-5 design-only)
 TESTNET_TXS: []
 DOCS_PAGES: 16 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro, docs/patterns/zk/README + 4 ZK pattern designs)
-TESTS_PASSING: 466/466 upstream + 30/30 vitest files (74/74 tests) + 67/67 cargo runtime suite (51 core + 7 kcc20 + 9 zk, 0 ignored)
+TESTS_PASSING: 466/466 upstream + 31/31 vitest files (75/75 tests) + 70/70 cargo runtime suite (51 core + 7 kcc20 + 12 zk, 0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3/4. Phase 5 is still blocked on the **authoring surface** for `OpZkPrecompile`: engine side is already shipped via rusty-kaspa#775, and compiler PR `kaspanet/silverscript#125` exposes the builtin name, but local prototyping showed that a 0-arg builtin alone is insufficient because SilverScript rejects raw operand-push statements. The strongest current candidate is now a structured helper with custom lowering (e.g. `OpGroth16Verify(vk, proof, [a, b, c, ...])`), which compiled successfully in a local silverscript prototype; explicit push syntax remains the broader alternative.
 NEXT_PHASE: 5 (resolve the SilverScript authoring surface around `OpZkPrecompile`, then implement Pattern 5.1 Verified Computation). The honest-limitation gap in Phase 4 (covenant-output materialization) is now closed; SDK + integrations exercise real silverc compile end-to-end.

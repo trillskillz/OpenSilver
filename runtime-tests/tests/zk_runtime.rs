@@ -149,6 +149,24 @@ fn compile_verified_computation(
         .expect("verified-computation.sil compiles under the patched silverc")
 }
 
+fn compile_private_asset_transfer(
+    verifying_key: &[u8],
+    commitment_root: &[u8],
+    amount: i64,
+) -> CompiledContract<'static> {
+    let source = fs::read_to_string(repo_root().join("contracts/zk/private-asset-transfer.sil"))
+        .expect("contract source reads");
+    let args: Vec<Expr<'static>> = vec![
+        bytes_to_expr(verifying_key),
+        bytes_to_expr(commitment_root),
+        Expr::int(amount),
+    ];
+    let leaked_source: &'static str = Box::leak(source.into_boxed_str());
+    let leaked_args: &'static [Expr<'static>] = Vec::leak(args);
+    compile_contract(leaked_source, leaked_args, CompileOptions::default())
+        .expect("private-asset-transfer.sil compiles under the patched silverc")
+}
+
 fn compile_proof_stitched(verifying_key: &[u8], recipient_pk: &[u8]) -> CompiledContract<'static> {
     let source = fs::read_to_string(repo_root().join("contracts/zk/proof-stitched-multi-pattern.sil"))
         .expect("contract source reads");
@@ -815,4 +833,187 @@ fn proof_stitched_leader_rejects_tampered_proof() {
         TxScriptError::ZkIntegrity(_) | TxScriptError::VerifyError | TxScriptError::EvalFalse => {}
         other => panic!("unexpected error variant: {other:?}"),
     }
+}
+
+// ─── Pattern 5.2: Private Asset Transfer ───────────────────────────────────
+//
+// The fixture's public_inputs[2] (a 32-byte BN254 field element) is
+// reinterpreted as the recipient's x-only pubkey here. It's not a valid
+// secp256k1 point in the real world — the engine doesn't care because
+// the contract compares scriptPubKey bytes verbatim, and the same
+// invalid-but-deterministic bytes appear on both sides. A real circuit
+// would gate pi_recipient on x-only-point validity inside the circuit;
+// these tests prove the COVENANT side of the contract works against the
+// shared Groth16 verifier surface.
+
+#[test]
+fn private_asset_transfer_accepts_valid_proof_with_pinned_outputs() {
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let proof = decode_hex(&fixture.proof_compressed_hex);
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let commitment_root = public_inputs[0].clone();
+    let pi_recipient_bytes = public_inputs[2].clone();
+    let amount = 1_000_i64;
+
+    let compiled = compile_private_asset_transfer(&verifying_key, &commitment_root, amount);
+
+    // Build a tx whose output[0] pins (amount, P2PK(pi_recipient_bytes)).
+    // We use the same bytes the contract will derive from pi[2] so the
+    // scriptPubKey comparison succeeds.
+    let recipient_p2pk = build_p2pk_script(&pi_recipient_bytes);
+    let output0 = TransactionOutput {
+        value: amount as u64,
+        script_public_key: ScriptPublicKey::new(0, recipient_p2pk.into()),
+        covenant: None,
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xD0; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    // Input value > amount so the contract's amount-pin succeeds even
+    // though we don't compute fees here.
+    let input_value = 5_000u64;
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let sigscript = compiled
+        .build_sig_script(
+            "transfer",
+            vec![
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+            ],
+        )
+        .expect("transfer sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_plain_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "private-asset-transfer runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn private_asset_transfer_rejects_wrong_commitment_root() {
+    // Same fixture but the contract is deployed with a DIFFERENT
+    // commitment_root. The require(pi_commitment_root == commitment_root)
+    // gate fires before the proof verification.
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let proof = decode_hex(&fixture.proof_compressed_hex);
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    // Deploy with a commitment_root that doesn't match pi[0].
+    let wrong_root: Vec<u8> = (0..32).map(|i| i as u8).collect();
+    let pi_recipient_bytes = public_inputs[2].clone();
+    let amount = 1_000_i64;
+
+    let compiled = compile_private_asset_transfer(&verifying_key, &wrong_root, amount);
+
+    let recipient_p2pk = build_p2pk_script(&pi_recipient_bytes);
+    let output0 = TransactionOutput {
+        value: amount as u64,
+        script_public_key: ScriptPublicKey::new(0, recipient_p2pk.into()),
+        covenant: None,
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xD1; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(5_000, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let sigscript = compiled
+        .build_sig_script(
+            "transfer",
+            vec![
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+            ],
+        )
+        .expect("transfer sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo)
+        .expect_err("commitment_root mismatch must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+#[test]
+fn private_asset_transfer_rejects_payout_to_wrong_recipient() {
+    // Valid proof + matching commitment_root, but tx output 0 routes
+    // to a DIFFERENT recipient than pi_recipient. The
+    // requirePayoutToPiRecipient gate fires.
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let proof = decode_hex(&fixture.proof_compressed_hex);
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let commitment_root = public_inputs[0].clone();
+    let amount = 1_000_i64;
+
+    let compiled = compile_private_asset_transfer(&verifying_key, &commitment_root, amount);
+
+    // Wrong recipient bytes — anything other than pi[2].
+    let wrong_recipient: Vec<u8> = (0..32).map(|i| 0xFFu8 ^ i as u8).collect();
+    let recipient_p2pk = build_p2pk_script(&wrong_recipient);
+    let output0 = TransactionOutput {
+        value: amount as u64,
+        script_public_key: ScriptPublicKey::new(0, recipient_p2pk.into()),
+        covenant: None,
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0xD2; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(5_000, ScriptPublicKey::new(0, compiled.script.clone().into()), 0, false, None);
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let sigscript = compiled
+        .build_sig_script(
+            "transfer",
+            vec![
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+            ],
+        )
+        .expect("transfer sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_plain_input(mutable.tx, utxo)
+        .expect_err("wrong-recipient payout must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
 }

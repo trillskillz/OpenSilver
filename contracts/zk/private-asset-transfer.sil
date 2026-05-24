@@ -1,0 +1,98 @@
+pragma silverscript ^0.1.0;
+
+// Pattern 5.2 — Private Asset Transfer (v1).
+//
+// COMPILE STATUS: requires the OpenSilver Phase-5 compiler patch
+// (`npm run patch:silverc:zk`). See `contracts/zk/verified-computation.sil`
+// for the unblock-path story.
+//
+// What this v1 enforces (covenant side):
+//   - The proof's commitment_root public input matches a deploy-time
+//     committed value in contract state. A caller cannot swap which
+//     transfer tree the proof refers to.
+//   - The proof itself verifies under the deploy-time verifying key.
+//     A caller cannot swap circuits.
+//   - The first transaction output's value AND scriptPubKey are pinned
+//     to the (amount, recipient) the proof committed to. The amount is
+//     deploy-time state (configurable per-deployment); the recipient is
+//     extracted from the proof's `pi_recipient` public input slot.
+//
+// What this v1 does NOT do — and why:
+//   - **No on-chain nullifier accumulator.** Real production needs a
+//     stateful continuation that tracks spent nullifiers across calls
+//     to prevent double-spend. v1 leaves this to the deploy lifecycle:
+//     each deployment is single-use for one transfer (commitment_root
+//     baked at deploy, no continuation). A future v2 should add a
+//     `nullifier_root` state field updated via singleton transition,
+//     with the proof attesting `new_root = insert(old_root, nullifier)`.
+//   - **No amount extraction from public inputs.** Amount is also
+//     deploy-time state. Real circuits would bind amount into a
+//     dedicated public-input slot — that requires per-circuit codecs
+//     (Fr ↔ i64 bridge with overflow handling) which we defer to v2.
+//   - **No selective-disclosure guarantees beyond what the circuit
+//     attests.** This contract is a verifier; it cannot make
+//     guarantees about properties the prover's circuit does not encode.
+//     Threat model assessment must include the circuit, not just the
+//     covenant.
+//
+// Public-inputs layout (5 slots to match the Groth16 fixture in
+// `references/fixtures/groth16-opzkprecompile-fixture.json`):
+//   pi[0] = commitment_root  — pinned to contract state at deploy
+//   pi[1] = nullifier        — the proof's claimed unique spend marker
+//                              (verified by the proof; not retained on-chain)
+//   pi[2] = recipient_bytes  — pinned to tx.outputs[0].scriptPubKey
+//   pi[3..4] = padding       — reserved for future circuit extensions
+//                              (amount, fee, expiry, etc.)
+//
+// For a real circuit, the bound semantics for each slot are the
+// circuit author's responsibility. The OpenSilver covenant only
+// enforces that the slots match state / tx outputs at the boundaries.
+
+contract PrivateAssetTransfer(
+    byte[] init_verifying_key,
+    byte[32] init_commitment_root,
+    int init_amount
+) {
+    byte[] verifying_key = init_verifying_key;
+    byte[32] commitment_root = init_commitment_root;
+    int amount = init_amount;
+
+    function requirePayoutToPiRecipient(byte[32] recipient_bytes) {
+        // The byte[32] -> pubkey cast doesn't validate that the bytes
+        // form a real secp256k1 x-only point — it's a reinterpret.
+        // The engine compares the resulting P2PK lock byte-for-byte
+        // against tx.outputs[0].scriptPubKey, so even an invalid
+        // pubkey commits to a deterministic P2PK shape. A real circuit
+        // would gate pi_recipient on x-only-point validity inside the
+        // circuit; we don't re-enforce that on-chain.
+        pubkey recipient = pubkey(recipient_bytes);
+        byte[34] lock = new ScriptPubKeyP2PK(recipient);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](lock));
+    }
+
+    entrypoint function transfer(
+        byte[] proof,
+        byte[32] pi_commitment_root,
+        byte[32] pi_nullifier,
+        byte[32] pi_recipient,
+        byte[32] pi_padding1,
+        byte[32] pi_padding2
+    ) {
+        // (1) Pin the proof's commitment_root to the deploy-time state.
+        //     A caller cannot point a valid proof at a different tree.
+        require(pi_commitment_root == commitment_root);
+
+        // (2) The proof itself must verify against the deploy-time VK.
+        require(OpGroth16Verify(
+            verifying_key,
+            proof,
+            [pi_commitment_root, pi_nullifier, pi_recipient, pi_padding1, pi_padding2]
+        ));
+
+        // (3) Pin the first transaction output to (amount, recipient).
+        //     amount is state (deploy-time committed); recipient comes
+        //     from pi[2].
+        requirePayoutToPiRecipient(pi_recipient);
+    }
+}
