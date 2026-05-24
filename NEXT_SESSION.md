@@ -55,10 +55,11 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 - Replaced "implied" cells in `PATTERN_MAPPING.md` with concrete paths into the upstream clones (OZ file names, CashScript `.cash` examples, Aiken `.ak` modules).
 - **Quantitative finding:** 10 of 22 V1 patterns have prior art (5 base OZ + 5 KRC-20 derivations); 5 have a CashScript example; 12 are genuine net-new for L1 UTXO covenant systems. This is the quantitative basis for the OpenSilver thesis.
 
-### 6. Saefstroem Groth16 PR + Hans Moog vProgs PRs
-- Read `kaspanet/rusty-kaspa#775` (KIP-16 reference impl) — opcode dispatch, precompile structure, error modes.
-- Survey vProgs PRs (search "vProgs" in `kaspanet/rusty-kaspa` PRs).
-- Output: extend `references/kips/SUMMARY.md` with implementation-level notes for KIP-16 (Phase 5) and forward-compat callouts for vProgs.
+### 6. Saefstroem Groth16 PR + Hans Moog vProgs PRs ✅ DONE 2026-05-23
+- Read `rusty-kaspa#775` (merged 2026-02-05, +2430/-121 across 56 files). Read `crypto/txscript/src/zk_precompiles/{mod,tags,error,groth16/mod,risc0/mod}.rs` and the `OpZkPrecompile` dispatch in `opcodes/mod.rs:889`.
+- vProgs is no longer a stack of `rusty-kaspa` PRs — it's `kaspanet/vprogs` (separate monorepo, 6 layers, last touched 2026-05-15). Read its README + `l1/bridge/src/lib.rs` event shape.
+- Output: extended `references/kips/SUMMARY.md` with a "KIP-16 implementation-level notes" section (opcode dispatch, fixed Gram costs, stack shapes for both precompiles, error stringification, the `TODO(covpp-mainnet)` audit-status finding, SDK glue requirement) and a "vProgs forward-compat notes" section (five concrete callouts: no L1 opcode needed for interop, subnet-id lane mapping, KIP-16 vs vProgs zkVM independence, no-recursive-lineage still applies, do-not-ship-vprogs-aware patterns in V1).
+- Added Hans Moog to the outreach contact list as a low-priority sanity-check.
 
 ### 8. Runtime harness — landed and extended ✅ DONE 2026-05-23
 - Picked up the previous session's uncommitted `runtime-tests/` crate, fixed the three rough edges (generic `MutableTransaction<T>`, `Vec::leak` on args, 32-byte cov-id literal), got the 4 starter tests passing.

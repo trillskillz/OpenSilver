@@ -89,6 +89,49 @@ Tag values start at `0x20` to avoid colliding with `OpData` stack operations. Fu
 
 Reference impl: `kaspanet/rusty-kaspa#775`.
 
+### KIP-16 implementation-level notes (from `rusty-kaspa#775`, merged 2026-02-05)
+
+PR #775 by Saefstroem landed as commit on the `covpp-reset1` integration branch, +2430/-121 across 56 files. Notable structural decisions OpenSilver Phase 5 patterns inherit:
+
+**Opcode dispatch.** `OpZkPrecompile (0xa6)` in `crypto/txscript/src/opcodes/mod.rs:889` gates on `vm.flags.covenants_enabled` (so it shares Toccata activation with the rest of the covenant opcodes; not a separately-toggleable feature). The body is a four-line dispatcher: pop tag → consume tag cost → call into `verify_zk(tag, dstack)` → push `true`. Failure pops out as `TxScriptError::ZkIntegrity(...)` — there is no separate "proof failed" vs "proof malformed" axis at the engine boundary; both surface as one error variant.
+
+**Tag costs are fixed Gram values, not measured per call.** From `zk_precompiles/tags.rs`:
+- `ZkTag::Groth16` = `Gram(1000 * 140)` script units
+- `ZkTag::R0Succinct` = `Gram(1000 * 250)` script units
+- `ZkTag::max_cost()` = R0Succinct (highest)
+- Test asserts: Groth16 → 3 verifications per block at mainnet compute-mass limit; R0Succinct → 2 per block. **OpenSilver `estimate_costs` MCP tool (Phase 7) must hardcode these constants, not call out to the verifier.**
+
+**Stack shape for Groth16 (consumed top-to-bottom by `Groth16Precompile::verify_zk`):**
+```
+[..., public_input_{n-1}, ..., public_input_0,
+      n_inputs (i32),
+      proof_bytes,                       ← compressed
+      unprepared_compressed_vk]          ← uncompressed VK, ironically named
+```
+Verifier algorithm: deserialise vk → `prepare_verifying_key` → deserialise proof → `Groth16::<Bn254>::prepare_inputs(pvk, &fr_inputs)` → `Groth16::<Bn254>::verify_proof_with_prepared_inputs(pvk, proof, prepared_inputs)`. Built on `ark-groth16` over `ark-bn254`.
+
+**Stack shape for R0Succinct (top-to-bottom):**
+```
+[claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn]
+```
+The verifier internally calls `compute_assert_claim(rcpt.claim(), image_id, journal)` after `rcpt.verify_integrity()` — this is the binding step that prevents an attacker from substituting a different image_id/journal with an otherwise valid receipt. Worth quoting from the inline comment: *"This step binds that the provided image id and journal are indeed the ones that were used to generate the proof."*
+
+**Errors are stringified.** Both precompiles' typed errors (`Groth16Error`, `R0Error`) are coerced to `String` and wrapped in `TxScriptError::ZkIntegrity(String)`. Pattern authors don't get to discriminate "verification failed" from "deserialisation failed" inside the script — both abort with the same outcome. Worth noting in Phase 5 docs.
+
+**Both precompiles carry a `TODO(covpp-mainnet)` "not yet fully audited for mainnet use" comment.** This means Phase 5 OpenSilver patterns MUST be doubly cautious in their "WHEN NOT TO USE THIS" sections until those audit comments come off. Concrete guidance for the patterns:
+- Reference implementations only — no production calls without explicit mainnet-ready signoff from the rusty-kaspa team.
+- Tn12-only deployment for the first 30 days post-activation, regardless of audit.
+- Bug-bounty pool must explicitly cover precompile-derived findings (Phase 10.3).
+
+**SDK glue requirement** for Phase 5 patterns: a Groth16-helper module in the `sdk/` workspace that owns the canonical stack-order builder so pattern authors can't accidentally reverse it. `OpenSilver/sdk/zk/groth16.ts` shape:
+```ts
+function buildGroth16Witness(opts: {
+  verifyingKey: Uint8Array;   // uncompressed ark-groth16 VK
+  proof: Uint8Array;          // compressed
+  publicInputs: Uint8Array[]; // each is an Fr (compressed); pattern must validate count == vk's expected
+}): Uint8Array[]
+```
+
 ---
 
 ## KIP-21 — Partitioned Sequencing Commitment (Michael Sutton, Draft)
@@ -108,3 +151,35 @@ SeqStateRoot(B) = H(ActiveLanesRoot(B), block_context_hash, mergeset_miner_paylo
 - Forward-compat target: `PLAN.md` rule says patterns must not block vProgs migration. The KIP-21 lane abstraction is the vProgs primitive. Patterns that key state to `tx.subnetwork_id` today get vProgs migration for free.
 
 This KIP is still **Draft** — its details may move. Phase 5 patterns will reference it but should not hard-depend on opcode semantics until the KIP advances.
+
+### vProgs forward-compat notes (from `kaspanet/vprogs`, last touched 2026-05-15)
+
+`kaspanet/vprogs` is the **already-public** prototype framework for "based computation on the Kaspa network" — Hans Moog's vProgs is no longer a stack of open PRs against `rusty-kaspa`, it's a separate monorepo. ~5.7 MB, six layers (core / storage / state / scheduling / transaction-runtime / node). Recent commits (April 2026): "ZK Backend RISC0 - risc0 zkVM backend implementation", "ZK VM - scheduler Processor integrating the proving pipeline", "ZK Batch Prover". The vProgs+ZK stack is being built in vprogs, not bolted onto rusty-kaspa.
+
+**L1 surface in vprogs** lives at `l1/bridge/` and `l1/types/`. `l1/bridge/src/lib.rs` shows the event-driven shape:
+
+```rust
+// Event-driven bridge to the Kaspa L1 network.
+// Spawns a background worker thread that connects to an L1 node over wRPC,
+// tracks the selected parent chain, and emits L1Events through a lock-free queue.
+//
+// L1Event variants:
+//   Connected
+//   ChainBlockAdded { checkpoint, ... }
+//   Rollback { checkpoint, blue_score_depth }
+//   Finalized(checkpoint)
+//   Disconnected
+//   Fatal { reason }
+```
+
+vProgs talks to a normal Kaspa node over wRPC and consumes the **selected-parent chain** via its own bridge — it does *not* extend the L1 consensus. Reorgs are handled in vprogs land via `blue_score_depth`-tagged rollbacks.
+
+**OpenSilver forward-compat callouts (refinement of the earlier KIP-21 section):**
+
+1. **No L1 opcode is needed for vProgs interop.** vProgs reads L1 via wRPC, not via on-chain witness. OpenSilver patterns that just sit on L1 will be observable by vProgs without any pattern-side changes.
+2. **vProgs lanes are likely to map onto KIP-21 `tx.subnetwork_id` lanes** based on the language in `vprogs/node/README.md` and the recent ZK Batch Prover commit. Any OpenSilver pattern that names a custom subnetwork ID gets a free vProgs lane mapping; patterns that use the default native subnet are vProgs-transparent.
+3. **The ZK backend in vProgs (`risc0` zkVM)** is independent of KIP-16's on-chain `OpZkPrecompile`. vProgs proves *off-chain batches* and could (later) attest them to L1 via a Groth16 verifier — but that path is not yet built. Phase 5 ZK patterns should target KIP-16 directly for the L1 verification step; vProgs is a separate execution layer, not a co-processor for our patterns.
+4. **Sutton's "no recursive lineage" rule still applies** — vProgs does not change this. If a pattern needs to prove "this UTXO descends from genesis G" it must still use KIP-20 covenant IDs, not walk a parent-tx witness, even if vProgs would in principle be able to verify the walk off-chain.
+5. **vProgs is "early development / prototype phase" per its own README.** OpenSilver SHOULD NOT ship a vProgs-aware Phase 5 pattern in V1. The forward-compat target is "patterns don't *block* a future vProgs port" — not "patterns work *natively* with vProgs today." Re-evaluate at the V2 milestone once vProgs has had a stable-API release.
+
+**No outreach changes** — Hans Moog wasn't on the Phase 0 contact list because his vProgs work didn't yet have a public surface to coordinate against. Now that `kaspanet/vprogs` is live, add him to the list with a low-priority note: *"sanity-check that our patterns won't conflict with the vProgs L1 bridge's event consumption."*
