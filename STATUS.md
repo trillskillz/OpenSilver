@@ -4,7 +4,7 @@
 PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
 PHASE_2_STATUS: IN_PROGRESS (monorepo scaffold landed; 12 Phase-3 patterns scaffolded; runtime harness live)
 PHASE_4_STATUS: IN_PROGRESS (KCC20 asset contract scaffolded as 4.1; KCC20Ownable, KCC20Pausable, KCC20Capped, and KCC20Vesting controllers scaffolded as 4.2/4.3/4.4/4.5)
-PHASE_5_STATUS: DESIGN ONLY (4 patterns specified in docs/patterns/zk/; compilation blocked on silverscript-lang exposing OpZkPrecompile)
+PHASE_5_STATUS: DESIGN ONLY UPSTREAM / LOCAL PATCH LANE READY (4 patterns specified in docs/patterns/zk/; upstream compilation still blocked on silverscript-lang exposing OpZkPrecompile, but OpenSilver now has a validated local patch/apply/smoke-test flow)
 PATTERNS_COMPLETE: 0/22 (12 Phase-3 scaffolds runtime-verified incl. owner-handoff + finalize_recovery; 5 Phase-4 patterns scaffolded; Phase-5 design-only)
 TESTNET_TXS: []
 DOCS_PAGES: 16 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
@@ -13,14 +13,15 @@ DOCS_PAGES: 16 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               docs/site/docs/intro, docs/patterns/zk/README + 4 ZK pattern designs)
 TESTS_PASSING: 466/466 upstream + 26/26 vitest files (68/68 tests) + 58/58 cargo runtime suite (51 core + 7 kcc20, 0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
-BLOCKERS: NONE for continuing Phase 2/3/4. Phase 5 blocked on silverscript-lang exposing OpZkPrecompile builtin (KIP-16 opcode 0xa6 — engine side already shipped via rusty-kaspa#775; compile-side not wired through yet at pinned commit 2c46231).
-NEXT_PHASE: 5 (land upstream silverscript-lang patch adding OpZkPrecompile builtin, then implement Pattern 5.1 Verified Computation). The honest-limitation gap in Phase 4 (covenant-output materialization) is now closed; SDK + integrations exercise real silverc compile end-to-end.
+BLOCKERS: NONE for continuing Phase 2/3/4. Phase 5 is still blocked upstream on silverscript-lang exposing OpZkPrecompile builtin (KIP-16 opcode 0xa6 — engine side already shipped via rusty-kaspa#775; compile-side not wired through yet at pinned commit 2c46231), but OpenSilver now has a validated local patch lane via `npm run patch:silverc:zk` while the upstream PR tracked in issue #3 is pending.
+NEXT_PHASE: 5 (turn the validated local OpZkPrecompile patch into the upstream silverscript PR, then implement Pattern 5.1 Verified Computation). The honest-limitation gap in Phase 4 (covenant-output materialization) is now closed; SDK + integrations exercise real silverc compile end-to-end.
 ```
 
 ## What's done
 
 - Repo initialised, MIT-licensed, single commit history.
 - Shared compiler bootstrap landed at `scripts/bootstrap-silverc.sh`; CI and local setup now use the same pinned `silverc` acquisition/build path.
+- Local Phase-5 experimental unblock landed: `patches/silverscript-opzkprecompile.patch` + `scripts/apply-silverscript-opzkprecompile-patch.sh` (`npm run patch:silverc:zk`) apply the RFC patch to the pinned upstream checkout, rebuild `silverc`, and smoke-test a minimal `.sil` using `require(OpZkPrecompile())`.
 - Upstream `kaspanet/silverscript` cloned at `2c46231`. **`cargo test -p silverscript-lang` runs 466 tests across 21 suites with 0 failures** — toolchain confirmed working.
 - KIP-16/17/20/21 fetched from their open PR branches into `references/kips/`. Per-KIP summary in `references/kips/SUMMARY.md`.
 - `docs/DECL.md` (declaration sugar layer) read in full. This is the security-by-construction macro surface OpenSilver patterns target.

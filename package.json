@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "bootstrap:silverc": "bash scripts/bootstrap-silverc.sh",
+    "patch:silverc:zk": "bash scripts/apply-silverscript-opzkprecompile-patch.sh",
     "build": "tsc -b sdk cli mcp wizard integrations",
     "clean": "rm -rf sdk/dist cli/dist mcp/dist wizard/dist integrations/dist coverage docs/site/.docusaurus",
     "docs:build": "npm run build --workspace @opensilver/docs-site",

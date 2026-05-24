@@ -123,7 +123,7 @@ Runtime suite is now **58/58 (51 core + 7 kcc20), 0 ignored**.
 
 ## Phase 5 queue (added 2026-05-24)
 
-Four ZK-aware patterns specified in `docs/patterns/zk/` with full design + intended `.sil` shape. **All four compile-blocked** on silverscript-lang exposing `OpZkPrecompile` as a callable builtin. Engine side is shipped (KIP-16, `rusty-kaspa#775` merged 2026-02-05); SilverScript front-end at pinned commit `2c46231` has no builtin wired through.
+Four ZK-aware patterns specified in `docs/patterns/zk/` with full design + intended `.sil` shape. **All four remain compile-blocked upstream** on silverscript-lang exposing `OpZkPrecompile` as a callable builtin, but OpenSilver now has a validated local patch lane via `npm run patch:silverc:zk`. Engine side is shipped (KIP-16, `rusty-kaspa#775` merged 2026-02-05); SilverScript front-end at pinned commit `2c46231` has no builtin wired through by default.
 
 ### RFC landed (2026-05-24)
 
@@ -131,9 +131,10 @@ Four ZK-aware patterns specified in `docs/patterns/zk/` with full design + inten
 
 Three unblock paths (in order of preference):
 
-1. **File a PR against `kaspanet/silverscript`** carrying the RFC's patch sketch. Recommended PR title: "Expose OpZkPrecompile builtin to SilverScript front-end." Reviewers: `@OriNewman` (compiler maintainer), `@saefstroem` (KIP-16 author). This is the right answer; the RFC includes the test plan and a working `.sil` minimal example.
-2. **Raw-script splice** at the OpenSilver compile pipeline level: run `silverc`, then walk the emitted bytecode and insert `OpZkPrecompile` (`0xa6`) at a marker-comment position. Brittle stopgap; remove the moment path 1 lands.
-3. **Wait** — silverscript-lang is under active development; the builtin may land before Toccata activation. Worth a low-priority tracking question to Newman.
+1. **File a PR against `kaspanet/silverscript`** carrying the RFC's patch sketch. Recommended PR title: "Expose OpZkPrecompile builtin to SilverScript front-end." Reviewers: `@OriNewman` (compiler maintainer), `@saefstroem` (KIP-16 author). This is the right answer; the RFC includes the test plan and a working `.sil` minimal example. Tracking: GitHub issue #3.
+2. **Use the local experimental patch lane** — `npm run patch:silverc:zk` applies `patches/silverscript-opzkprecompile.patch` to the pinned upstream checkout, rebuilds `silverc`, and smoke-tests a minimal `.sil` with `require(OpZkPrecompile())`. Use this for local Phase-5 prototyping until path 1 lands upstream.
+3. **Raw-script splice** at the OpenSilver compile pipeline level: run `silverc`, then walk the emitted bytecode and insert `OpZkPrecompile` (`0xa6`) at a marker-comment position. Brittle stopgap; remove the moment path 1 lands.
+4. **Wait** — silverscript-lang is under active development; the builtin may land before Toccata activation. Worth a low-priority tracking question to Newman.
 
 Implementation order once unblocked:
 

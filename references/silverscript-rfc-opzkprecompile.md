@@ -1,7 +1,7 @@
 # RFC: Expose `OpZkPrecompile` as a SilverScript builtin
 
 **Target repo:** `kaspanet/silverscript` (specifically `silverscript-lang/src/compiler/compile.rs`)
-**Tracking issue:** TBD (to be filed by OpenSilver before sending the PR)
+**Tracking issue:** OpenSilver #3 — "Upstream silverscript PR: expose OpZkPrecompile builtin"
 **Author:** OpenSilver maintainers
 **Status:** Design (2026-05-24)
 

@@ -1,0 +1,68 @@
+diff --git a/silverscript-lang/src/compiler/compile.rs b/silverscript-lang/src/compiler/compile.rs
+index 65baf70..58c37f6 100644
+--- a/silverscript-lang/src/compiler/compile.rs
++++ b/silverscript-lang/src/compiler/compile.rs
+@@ -3581,6 +3581,7 @@ fn compile_builtin_call<'i>(mut ctx: CompileExprContext<'_, 'i>, name: &str, ar
+         "OpNum2Bin" => compile_opcode_builtin_call(&mut ctx, name, args, 2, OpNum2Bin),
+         "OpBin2Num" => compile_opcode_builtin_call(&mut ctx, name, args, 1, OpBin2Num),
+         "OpChainblockSeqCommit" => compile_opcode_builtin_call(&mut ctx, name, args, 1, OpChainblockSeqCommit),
++        "OpZkPrecompile" => compile_opcode_builtin_call(&mut ctx, name, args, 0, OpZkPrecompile),
+         "bytes" => compile_bytes_call(&mut ctx, args),
+         "length" => compile_length_call(&mut ctx, args),
+         "int" | "byte" | "bool" | "string" | "sig" | "pubkey" | "datasig" => compile_passthrough_cast_call(&mut ctx, name, args),
+diff --git a/silverscript-lang/src/compiler/debug_value_types.rs b/silverscript-lang/src/compiler/debug_value_types.rs
+index ed655b7..6c74e4f 100644
+--- a/silverscript-lang/src/compiler/debug_value_types.rs
++++ b/silverscript-lang/src/compiler/debug_value_types.rs
+@@ -70,6 +70,7 @@ pub(super) fn builtin_call_value_type(name: &str) -> &'static str {
+         | "ScriptPubKeyP2PK"
+         | "ScriptPubKeyP2SH"
+         | "ScriptPubKeyP2SHFromRedeemScript" => "byte[]",
++        "OpZkPrecompile" => "bool",
+         "OpInputCovenantId" | "OpOutputCovenantId" => "byte[32]",
+         _ => "byte[]",
+     }
+diff --git a/silverscript-lang/std/builtins.sil b/silverscript-lang/std/builtins.sil
+index d426348..265dbe4 100644
+--- a/silverscript-lang/std/builtins.sil
++++ b/silverscript-lang/std/builtins.sil
+@@ -790,3 +790,36 @@ function readInputStateWithTemplate(
+     int templateSuffixLen,
+     byte[32] expectedTemplateHash
+ ) : (object);
++
++/**
++ * Role:
++ *      Verify a ZK proof via the KIP-16 precompile dispatcher.
++ *
++ * Definition:
++ *      The KIP-16 OpZkPrecompile opcode (0xa6) reads a tag byte from the
++ *      stack top, dispatches to the corresponding verifier
++ *      (0x20 = Groth16, 0x21 = RISC0-Succinct), and pushes `true` if the
++ *      proof verifies. Tag-specific operands are consumed from the stack
++ *      in the order documented per precompile.
++ *
++ * Stack shape (Groth16, tag 0x20, top-to-bottom):
++ *   [..., public_input_{n-1}, ..., public_input_0,
++ *         n_public_inputs (i32),
++ *         proof_bytes,
++ *         uncompressed_verifying_key,
++ *         tag (0x20)]
++ *
++ * Stack shape (RISC0-Succinct, tag 0x21, top-to-bottom):
++ *   [claim, control_index, control_digests, seal, journal,
++ *    image_id, control_id, hashfn, tag (0x21)]
++ *
++ * Security notes:
++ *   - Verifying key, image_id, and any other identity-binding inputs
++ *     should come from contract state or a verified protocol
++ *     commitment, never from caller witness. Same trusted-source rule as
++ *     `expectedTemplateHash` in `validateOutputStateWithTemplate`.
++ *   - Failure surfaces as `TxScriptError::ZkIntegrity(String)`.
++ *     SilverScript cannot discriminate "verify failed" from
++ *     "operand deserialise failed".
++ *   - Both precompiles are gated on `vm.flags.covenants_enabled`. They
++ *     activate with the rest of Toccata; pre-activation calls fail with
++ *     `InvalidOpcode`.
++ */
++function OpZkPrecompile() : (bool);
