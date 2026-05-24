@@ -20,6 +20,7 @@ NEXT_PHASE: 5 (land upstream silverscript-lang patch adding OpZkPrecompile built
 ## What's done
 
 - Repo initialised, MIT-licensed, single commit history.
+- Shared compiler bootstrap landed at `scripts/bootstrap-silverc.sh`; CI and local setup now use the same pinned `silverc` acquisition/build path.
 - Upstream `kaspanet/silverscript` cloned at `2c46231`. **`cargo test -p silverscript-lang` runs 466 tests across 21 suites with 0 failures** — toolchain confirmed working.
 - KIP-16/17/20/21 fetched from their open PR branches into `references/kips/`. Per-KIP summary in `references/kips/SUMMARY.md`.
 - `docs/DECL.md` (declaration sugar layer) read in full. This is the security-by-construction macro surface OpenSilver patterns target.

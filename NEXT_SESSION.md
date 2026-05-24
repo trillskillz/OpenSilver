@@ -8,7 +8,7 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 - Created monorepo directories for `contracts`, `sdk`, `cli`, `mcp`, `wizard`, `integrations`, `docs`, `examples`, `tests`, and `benchmarks`.
 - Added strict TypeScript + Vitest tooling, workspace config, baseline CI, and a Docusaurus docs-site seed.
 - Added a first shared pattern-manifest/types surface in `sdk/` and wired basic consumers in CLI/MCP/Wizard/Integrations.
-- Remaining: expand the manifest schema, add contract-compilation hooks, and decide whether to vendor the compiler or reference the pinned upstream clone.
+- Remaining: expand the manifest schema, add contract-compilation hooks, and resolve the long-term compiler strategy tracked in GitHub issue #2 (vendor vs keep the pinned-upstream bootstrap flow from `scripts/bootstrap-silverc.sh`).
 - Phase 3.1 has started with an `Ownable` covenant scaffold; compiler validation is in place, and next work is behavior-level tests plus deciding whether the two-step handoff is the default variant.
 - Phase 3.2 has started with a `MultiSig` scaffold over three explicit signers with a reconfiguration path; next work is behavior validation and deciding how far to push toward true N-of-M in v1.
 - Phase 3.3 has started with a `TimeLock` scaffold supporting hard/soft modes plus a forward-only extension path. Strict pre-unlock soft-cancel behavior is now enforced via `tx.locktime < unlock_time`; next work is deciding whether hashed-owner identifiers should replace raw pubkeys in state.

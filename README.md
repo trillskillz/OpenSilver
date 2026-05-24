@@ -18,7 +18,7 @@ See `PLAN.md` for the full implementation framework. See `ECOSYSTEM_COORDINATION
 
 Phase 2 — Repo Scaffold — IN PROGRESS
 
-Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael Sutton and Ori Newman remains recommended (drafts in `ECOSYSTEM_COORDINATION.md`), but it no longer blocks implementation. The repo now includes the first monorepo scaffold, baseline TypeScript/Vitest tooling, CI, and a Docusaurus docs-site seed.
+Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael Sutton and Ori Newman remains recommended (drafts in `ECOSYSTEM_COORDINATION.md`), but it no longer blocks implementation. The repo now includes the first monorepo scaffold, baseline TypeScript/Vitest tooling, a shared `silverc` bootstrap path for local dev + CI, and a Docusaurus docs-site seed.
 
 ## Map of this repo
 
@@ -40,7 +40,8 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 | `docs/site/` | Docusaurus docs-site scaffold. |
 | `tests/` | Vitest-based compile suite, one test per Phase-3 pattern plus the shared manifest. |
 | `runtime-tests/` | Rust crate that compiles each `.sil` via `silverscript-lang` and executes the redeem script in `kaspa-txscript`'s VM. Run via `npm run test:runtime` or `cargo test --manifest-path runtime-tests/Cargo.toml`. |
-| `.github/workflows/ci.yml` | Baseline CI: install, typecheck, test. |
+| `scripts/bootstrap-silverc.sh` | Idempotent bootstrap for the pinned upstream `silverc` compiler (`kaspanet/silverscript` at `2c46231`). Used by CI and local setup. |
+| `.github/workflows/ci.yml` | CI: bootstrap pinned `silverc`, install, typecheck, test. |
 | `upstream/silverscript/` | Pinned clone of `kaspanet/silverscript` at `2c46231` (gitignored). |
 | `upstream/kips/` | Pinned clone of `kaspanet/kips` (gitignored). |
 
@@ -51,6 +52,17 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 - **Phase 3 — Core (12):** Ownable, MultiSig, TimeLock, Vault, Escrow (bilateral), Escrow (milestone), Streaming Payment, Vesting, Dead Man's Switch, Social Recovery, Atomic Swap (HTLC), Freelance/Payroll. **All 12 scaffolds runtime-verified end-to-end on every documented entrypoint** (51/51 core runtime tests, see Toolchain below).
 - **Phase 4 — KCC20 token (6):** Reference, Ownable, Pausable, Capped, Vesting, Snapshot. **Asset contract (4.1) scaffolded** at `contracts/tokens/kcc20.sil`; **KCC20Ownable (4.2)**, **KCC20Pausable (4.3)**, **KCC20Capped (4.4)**, and **KCC20Vesting (4.5)** controller covenants are scaffolded at `contracts/tokens/`; 4.6 is deferred until KIP-21 lane stability lands.
 - **Phase 5 — ZK-aware (4):** Verified Computation, Private Asset Transfer, ZK-Verified Oracle, Proof-Stitched Multi-Pattern. **Design-only**: four pattern designs landed in `docs/patterns/zk/`, each carrying state layout, intended `.sil` shape, public-inputs schema, cost amortisation table (5.4), and "WHEN NOT TO USE THIS" section. Compilation blocked on silverscript-lang exposing `OpZkPrecompile` as a callable builtin — the engine-side opcode (`0xa6`) is fully shipped via `kaspanet/rusty-kaspa#775` but the SilverScript front-end at our pinned commit `2c46231` has no builtin wired through. Unblock paths documented in `docs/patterns/zk/README.md`.
+
+## Quick start
+
+```bash
+npm install
+npm run bootstrap:silverc
+npm run verify
+npm run test:runtime
+```
+
+`npm run bootstrap:silverc` clones or refreshes the pinned upstream `kaspanet/silverscript` checkout under `upstream/silverscript/` and builds `target/debug/silverc` in-place. CI uses the same script, so local and hosted builds now share one bootstrap path.
 
 ## Toolchain
 

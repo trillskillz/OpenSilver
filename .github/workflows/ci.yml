@@ -18,14 +18,8 @@ jobs:
         with:
           workspaces: |
             upstream/silverscript -> target
-      - name: Clone pinned silverscript upstream
-        run: |
-          rm -rf upstream/silverscript
-          git clone https://github.com/kaspanet/silverscript.git upstream/silverscript
-          cd upstream/silverscript
-          git checkout 2c46231
-      - name: Build silverc
-        run: cargo build --manifest-path upstream/silverscript/silverscript-lang/Cargo.toml --bin silverc
+      - name: Bootstrap pinned silverc
+        run: bash scripts/bootstrap-silverc.sh
       - name: Install dependencies
         run: npm install
       - name: Typecheck
