@@ -105,6 +105,23 @@ fn pausable_state_arg<'i>(kcc20_covid: Vec<u8>, paused: bool, initialized: bool)
     ])
 }
 
+
+fn ownable_state_arg<'i>(
+    admin: Vec<u8>,
+    has_pending_admin: bool,
+    pending_admin: Vec<u8>,
+    kcc20_covid: Vec<u8>,
+    initialized: bool,
+) -> Expr<'i> {
+    struct_object(vec![
+        ("admin", Expr::bytes(admin)),
+        ("hasPendingAdmin", Expr::bool(has_pending_admin)),
+        ("pendingAdmin", Expr::bytes(pending_admin)),
+        ("kcc20Covid", Expr::bytes(kcc20_covid)),
+        ("initialized", Expr::bool(initialized)),
+    ])
+}
+
 #[test]
 fn kcc20_capped_init_and_mint_accept_happy_path() {
     const IDENTIFIER_COVENANT_ID: u8 = 0x02;
@@ -749,5 +766,477 @@ fn kcc20_pausable_pause_unpause_and_reject_paused_mint() {
     );
 
     let err = execute_input_with_covenants(mint_tx, mint_entries, 1).expect_err("paused mint should fail");
+    assert_verify_like_error(err);
+}
+
+
+#[test]
+fn kcc20_ownable_handoff_preserves_pending_mint_then_transfers_authority() {
+    const IDENTIFIER_COVENANT_ID: u8 = 0x02;
+    const IDENTIFIER_PUBKEY: u8 = 0x00;
+    const MAX_COV_INS: i64 = 2;
+    const MAX_COV_OUTS: i64 = 2;
+    const PENDING_MINT: i64 = 120;
+    const ACCEPTED_MINT: i64 = 80;
+
+    let admin = random_keypair();
+    let next_admin = random_keypair();
+    let recipient = random_keypair();
+    let admin_bytes = admin.x_only_public_key().0.serialize().to_vec();
+    let next_admin_bytes = next_admin.x_only_public_key().0.serialize().to_vec();
+    let recipient_bytes = recipient.x_only_public_key().0.serialize().to_vec();
+    let placeholder_kcc20_covid = Hash::from_bytes([0; 32]);
+
+    let asset_template_probe = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![vec![0u8; 32].into(), 0.into(), Expr::byte(IDENTIFIER_COVENANT_ID), Expr::bool(true), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let (template_prefix, template_suffix, expected_template_hash) = compiled_template_parts_and_hash(&asset_template_probe);
+
+    let compile_ownable = |admin_arg: Vec<u8>, has_pending: bool, pending_arg: Vec<u8>, kcc20_covid: Hash, initialized: bool| {
+        compile_contract_file(
+            "contracts/tokens/kcc20-ownable.sil",
+            vec![
+                admin_arg.into(),
+                Expr::bool(has_pending),
+                pending_arg.into(),
+                kcc20_covid.as_bytes().to_vec().into(),
+                Expr::bool(initialized),
+                (template_prefix.len() as i64).into(),
+                (template_suffix.len() as i64).into(),
+                expected_template_hash.clone().into(),
+                template_prefix.clone().into(),
+                template_suffix.clone().into(),
+            ],
+        )
+    };
+
+    let pre_init = compile_ownable(admin_bytes.clone(), false, admin_bytes.clone(), placeholder_kcc20_covid, false);
+    let funding_outpoint = TransactionOutpoint { transaction_id: TransactionId::from_bytes([0x7d; 32]), index: 0 };
+    let pre_init_output_without_covenant = TransactionOutput { value: 1_000, script_public_key: pay_to_script_hash_script(&pre_init.script), covenant: None };
+    let controller_cov_id = hashing::covenant_id::covenant_id(funding_outpoint, std::iter::once((0, &pre_init_output_without_covenant)));
+    let pre_init_genesis_tx = Transaction::new(
+        1,
+        vec![TransactionInput::new(funding_outpoint, vec![], 0, 0)],
+        vec![TransactionOutput { covenant: Some(kaspa_consensus_core::tx::CovenantBinding { authorizing_input: 0, covenant_id: controller_cov_id }), ..pre_init_output_without_covenant }],
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+
+    let asset_genesis = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![
+            controller_cov_id.as_bytes().to_vec().into(),
+            0.into(),
+            Expr::byte(IDENTIFIER_COVENANT_ID),
+            Expr::bool(true),
+            MAX_COV_INS.into(),
+            MAX_COV_OUTS.into(),
+        ],
+    );
+    let asset_genesis_outpoint = TransactionOutpoint { transaction_id: pre_init_genesis_tx.id(), index: 0 };
+    let asset_genesis_output = covenant_output(&asset_genesis, 0, Hash::from_bytes([0; 32]));
+    let asset_cov_id = hashing::covenant_id::covenant_id(asset_genesis_outpoint, std::iter::once((0, &asset_genesis_output)));
+    let post_init = compile_ownable(admin_bytes.clone(), false, admin_bytes.clone(), asset_cov_id, true);
+
+    let init_outputs = vec![covenant_output(&asset_genesis, 0, asset_cov_id), covenant_output(&post_init, 0, controller_cov_id)];
+    let init_entries = vec![output_utxo(&pre_init_genesis_tx.outputs[0], &pre_init_genesis_tx, controller_cov_id)];
+    let init_unsigned = Transaction::new(
+        1,
+        vec![tx_input_from_outpoint(asset_genesis_outpoint, vec![])],
+        init_outputs.clone(),
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    let init_sig = sign_tx_input(init_unsigned.clone(), init_entries.clone(), 0, &admin);
+    let init_sigscript = covenant_decl_sigscript(
+        &pre_init,
+        "init",
+        vec![ownable_state_arg(admin_bytes.clone(), false, admin_bytes.clone(), asset_cov_id.as_bytes().to_vec(), true), admin_bytes.clone().into(), init_sig.into()],
+        true,
+    );
+    let init_tx = Transaction::new(
+        1,
+        vec![tx_input_from_outpoint(asset_genesis_outpoint, init_sigscript)],
+        init_outputs,
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    execute_input_with_covenants(init_tx.clone(), init_entries, 0).expect("ownable init should succeed");
+
+    let pending_state = compile_ownable(admin_bytes.clone(), true, next_admin_bytes.clone(), asset_cov_id, true);
+    let propose_outputs = vec![covenant_output(&pending_state, 0, controller_cov_id)];
+    let propose_entries = vec![output_utxo(&init_tx.outputs[1], &init_tx, controller_cov_id)];
+    let propose_unsigned = Transaction::new(
+        1,
+        vec![tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 1 }, vec![])],
+        propose_outputs.clone(),
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    let propose_sig = sign_tx_input(propose_unsigned.clone(), propose_entries.clone(), 0, &admin);
+    let propose_sigscript = covenant_decl_sigscript(
+        &post_init,
+        "propose_admin_transfer",
+        vec![next_admin_bytes.clone().into(), admin_bytes.clone().into(), propose_sig.into()],
+        true,
+    );
+    let propose_tx = Transaction::new(
+        1,
+        vec![tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 1 }, propose_sigscript)],
+        propose_outputs,
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    execute_input_with_covenants(propose_tx.clone(), propose_entries, 0).expect("propose admin transfer should succeed");
+
+    let next_minter_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![
+            controller_cov_id.as_bytes().to_vec().into(),
+            0.into(),
+            Expr::byte(IDENTIFIER_COVENANT_ID),
+            Expr::bool(true),
+            MAX_COV_INS.into(),
+            MAX_COV_OUTS.into(),
+        ],
+    );
+    let pending_recipient_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![recipient_bytes.clone().into(), PENDING_MINT.into(), Expr::byte(IDENTIFIER_PUBKEY), Expr::bool(false), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let pending_state_after_mint = compile_ownable(admin_bytes.clone(), true, next_admin_bytes.clone(), asset_cov_id, true);
+    let pending_mint_outputs = vec![
+        covenant_output(&next_minter_asset, 0, asset_cov_id),
+        covenant_output(&pending_recipient_asset, 0, asset_cov_id),
+        covenant_output(&pending_state_after_mint, 1, controller_cov_id),
+    ];
+    let pending_mint_entries = vec![
+        output_utxo(&init_tx.outputs[0], &init_tx, asset_cov_id),
+        output_utxo(&propose_tx.outputs[0], &propose_tx, controller_cov_id),
+    ];
+    let pending_mint_unsigned = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 0 }, vec![]),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: propose_tx.id(), index: 0 }, vec![]),
+        ],
+        pending_mint_outputs.clone(),
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    let pending_admin_sig = sign_tx_input(pending_mint_unsigned.clone(), pending_mint_entries.clone(), 1, &admin);
+    let pending_asset_sigscript = covenant_decl_sigscript(
+        &asset_genesis,
+        "transfer",
+        vec![
+            kcc20_state_array_arg_full(vec![
+                (controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+                (recipient_bytes.clone(), IDENTIFIER_PUBKEY, PENDING_MINT, false),
+            ]),
+            sig_array_arg(vec![]),
+            witness_array_arg(vec![1]),
+        ],
+        true,
+    );
+    let pending_controller_sigscript = covenant_decl_sigscript(
+        &pending_state,
+        "mint",
+        vec![
+            ownable_state_arg(admin_bytes.clone(), true, next_admin_bytes.clone(), asset_cov_id.as_bytes().to_vec(), true),
+            admin_bytes.clone().into(),
+            pending_admin_sig.into(),
+            kcc20_state_arg(controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+            kcc20_state_arg(recipient_bytes.clone(), IDENTIFIER_PUBKEY, PENDING_MINT, false),
+        ],
+        true,
+    );
+    let pending_mint_tx = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 0 }, pending_asset_sigscript),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: propose_tx.id(), index: 0 }, pending_controller_sigscript),
+        ],
+        pending_mint_outputs,
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    execute_input_with_covenants(pending_mint_tx, pending_mint_entries, 1).expect("current admin should still mint while transfer pending");
+
+    let accepted_state = compile_ownable(next_admin_bytes.clone(), false, next_admin_bytes.clone(), asset_cov_id, true);
+    let accept_outputs = vec![covenant_output(&accepted_state, 0, controller_cov_id)];
+    let accept_entries = vec![output_utxo(&propose_tx.outputs[0], &propose_tx, controller_cov_id)];
+    let accept_unsigned = Transaction::new(
+        1,
+        vec![tx_input_from_outpoint(TransactionOutpoint { transaction_id: propose_tx.id(), index: 0 }, vec![])],
+        accept_outputs.clone(),
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    let accept_sig = sign_tx_input(accept_unsigned.clone(), accept_entries.clone(), 0, &next_admin);
+    let accept_sigscript = covenant_decl_sigscript(
+        &pending_state,
+        "accept_admin_transfer",
+        vec![next_admin_bytes.clone().into(), accept_sig.into()],
+        true,
+    );
+    let accept_tx = Transaction::new(
+        1,
+        vec![tx_input_from_outpoint(TransactionOutpoint { transaction_id: propose_tx.id(), index: 0 }, accept_sigscript)],
+        accept_outputs,
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    execute_input_with_covenants(accept_tx.clone(), accept_entries, 0).expect("accept admin transfer should succeed");
+
+    let accepted_recipient_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![recipient_bytes.clone().into(), ACCEPTED_MINT.into(), Expr::byte(IDENTIFIER_PUBKEY), Expr::bool(false), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let post_accept_state = compile_ownable(next_admin_bytes.clone(), false, next_admin_bytes.clone(), asset_cov_id, true);
+    let accepted_mint_outputs = vec![
+        covenant_output(&next_minter_asset, 0, asset_cov_id),
+        covenant_output(&accepted_recipient_asset, 0, asset_cov_id),
+        covenant_output(&post_accept_state, 1, controller_cov_id),
+    ];
+    let accepted_mint_entries = vec![
+        output_utxo(&init_tx.outputs[0], &init_tx, asset_cov_id),
+        output_utxo(&accept_tx.outputs[0], &accept_tx, controller_cov_id),
+    ];
+    let accepted_mint_unsigned = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 0 }, vec![]),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: accept_tx.id(), index: 0 }, vec![]),
+        ],
+        accepted_mint_outputs.clone(),
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    let next_admin_sig = sign_tx_input(accepted_mint_unsigned.clone(), accepted_mint_entries.clone(), 1, &next_admin);
+    let accepted_asset_sigscript = covenant_decl_sigscript(
+        &asset_genesis,
+        "transfer",
+        vec![
+            kcc20_state_array_arg_full(vec![
+                (controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+                (recipient_bytes.clone(), IDENTIFIER_PUBKEY, ACCEPTED_MINT, false),
+            ]),
+            sig_array_arg(vec![]),
+            witness_array_arg(vec![1]),
+        ],
+        true,
+    );
+    let accepted_controller_sigscript = covenant_decl_sigscript(
+        &accepted_state,
+        "mint",
+        vec![
+            ownable_state_arg(next_admin_bytes.clone(), false, next_admin_bytes.clone(), asset_cov_id.as_bytes().to_vec(), true),
+            next_admin_bytes.clone().into(),
+            next_admin_sig.into(),
+            kcc20_state_arg(controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+            kcc20_state_arg(recipient_bytes, IDENTIFIER_PUBKEY, ACCEPTED_MINT, false),
+        ],
+        true,
+    );
+    let accepted_mint_tx = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 0 }, accepted_asset_sigscript),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: accept_tx.id(), index: 0 }, accepted_controller_sigscript),
+        ],
+        accepted_mint_outputs,
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    execute_input_with_covenants(accepted_mint_tx, accepted_mint_entries, 1).expect("accepted new admin should mint");
+}
+
+#[test]
+fn kcc20_ownable_rejects_old_admin_after_acceptance() {
+    const IDENTIFIER_COVENANT_ID: u8 = 0x02;
+    const IDENTIFIER_PUBKEY: u8 = 0x00;
+    const MAX_COV_INS: i64 = 2;
+    const MAX_COV_OUTS: i64 = 2;
+    const BAD_MINT: i64 = 90;
+
+    let admin = random_keypair();
+    let next_admin = random_keypair();
+    let recipient = random_keypair();
+    let admin_bytes = admin.x_only_public_key().0.serialize().to_vec();
+    let next_admin_bytes = next_admin.x_only_public_key().0.serialize().to_vec();
+    let recipient_bytes = recipient.x_only_public_key().0.serialize().to_vec();
+    let placeholder_kcc20_covid = Hash::from_bytes([0; 32]);
+
+    let asset_template_probe = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![vec![0u8; 32].into(), 0.into(), Expr::byte(IDENTIFIER_COVENANT_ID), Expr::bool(true), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let (template_prefix, template_suffix, expected_template_hash) = compiled_template_parts_and_hash(&asset_template_probe);
+
+    let compile_ownable = |admin_arg: Vec<u8>, has_pending: bool, pending_arg: Vec<u8>, kcc20_covid: Hash, initialized: bool| {
+        compile_contract_file(
+            "contracts/tokens/kcc20-ownable.sil",
+            vec![
+                admin_arg.into(),
+                Expr::bool(has_pending),
+                pending_arg.into(),
+                kcc20_covid.as_bytes().to_vec().into(),
+                Expr::bool(initialized),
+                (template_prefix.len() as i64).into(),
+                (template_suffix.len() as i64).into(),
+                expected_template_hash.clone().into(),
+                template_prefix.clone().into(),
+                template_suffix.clone().into(),
+            ],
+        )
+    };
+
+    let pre_init = compile_ownable(admin_bytes.clone(), false, admin_bytes.clone(), placeholder_kcc20_covid, false);
+    let funding_outpoint = TransactionOutpoint { transaction_id: TransactionId::from_bytes([0x8d; 32]), index: 0 };
+    let pre_init_output_without_covenant = TransactionOutput { value: 1_000, script_public_key: pay_to_script_hash_script(&pre_init.script), covenant: None };
+    let controller_cov_id = hashing::covenant_id::covenant_id(funding_outpoint, std::iter::once((0, &pre_init_output_without_covenant)));
+    let pre_init_genesis_tx = Transaction::new(
+        1,
+        vec![TransactionInput::new(funding_outpoint, vec![], 0, 0)],
+        vec![TransactionOutput { covenant: Some(kaspa_consensus_core::tx::CovenantBinding { authorizing_input: 0, covenant_id: controller_cov_id }), ..pre_init_output_without_covenant }],
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    let asset_genesis = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![
+            controller_cov_id.as_bytes().to_vec().into(),
+            0.into(),
+            Expr::byte(IDENTIFIER_COVENANT_ID),
+            Expr::bool(true),
+            MAX_COV_INS.into(),
+            MAX_COV_OUTS.into(),
+        ],
+    );
+    let asset_genesis_outpoint = TransactionOutpoint { transaction_id: pre_init_genesis_tx.id(), index: 0 };
+    let asset_genesis_output = covenant_output(&asset_genesis, 0, Hash::from_bytes([0; 32]));
+    let asset_cov_id = hashing::covenant_id::covenant_id(asset_genesis_outpoint, std::iter::once((0, &asset_genesis_output)));
+    let post_init = compile_ownable(admin_bytes.clone(), false, admin_bytes.clone(), asset_cov_id, true);
+    let pending_state = compile_ownable(admin_bytes.clone(), true, next_admin_bytes.clone(), asset_cov_id, true);
+    let accepted_state = compile_ownable(next_admin_bytes.clone(), false, next_admin_bytes.clone(), asset_cov_id, true);
+
+    let init_outputs = vec![covenant_output(&asset_genesis, 0, asset_cov_id), covenant_output(&post_init, 0, controller_cov_id)];
+    let init_entries = vec![output_utxo(&pre_init_genesis_tx.outputs[0], &pre_init_genesis_tx, controller_cov_id)];
+    let init_unsigned = Transaction::new(1, vec![tx_input_from_outpoint(asset_genesis_outpoint, vec![])], init_outputs.clone(), 0, Default::default(), 0, vec![]);
+    let init_sig = sign_tx_input(init_unsigned.clone(), init_entries.clone(), 0, &admin);
+    let init_sigscript = covenant_decl_sigscript(&pre_init, "init", vec![ownable_state_arg(admin_bytes.clone(), false, admin_bytes.clone(), asset_cov_id.as_bytes().to_vec(), true), admin_bytes.clone().into(), init_sig.into()], true);
+    let init_tx = Transaction::new(1, vec![tx_input_from_outpoint(asset_genesis_outpoint, init_sigscript)], init_outputs, 0, Default::default(), 0, vec![]);
+    execute_input_with_covenants(init_tx.clone(), init_entries, 0).expect("ownable init should succeed");
+
+    let propose_outputs = vec![covenant_output(&pending_state, 0, controller_cov_id)];
+    let propose_entries = vec![output_utxo(&init_tx.outputs[1], &init_tx, controller_cov_id)];
+    let propose_unsigned = Transaction::new(1, vec![tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 1 }, vec![])], propose_outputs.clone(), 0, Default::default(), 0, vec![]);
+    let propose_sig = sign_tx_input(propose_unsigned.clone(), propose_entries.clone(), 0, &admin);
+    let propose_sigscript = covenant_decl_sigscript(&post_init, "propose_admin_transfer", vec![next_admin_bytes.clone().into(), admin_bytes.clone().into(), propose_sig.into()], true);
+    let propose_tx = Transaction::new(1, vec![tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 1 }, propose_sigscript)], propose_outputs, 0, Default::default(), 0, vec![]);
+    execute_input_with_covenants(propose_tx.clone(), propose_entries, 0).expect("propose should succeed");
+
+    let accept_outputs = vec![covenant_output(&accepted_state, 0, controller_cov_id)];
+    let accept_entries = vec![output_utxo(&propose_tx.outputs[0], &propose_tx, controller_cov_id)];
+    let accept_unsigned = Transaction::new(1, vec![tx_input_from_outpoint(TransactionOutpoint { transaction_id: propose_tx.id(), index: 0 }, vec![])], accept_outputs.clone(), 0, Default::default(), 0, vec![]);
+    let accept_sig = sign_tx_input(accept_unsigned.clone(), accept_entries.clone(), 0, &next_admin);
+    let accept_sigscript = covenant_decl_sigscript(&pending_state, "accept_admin_transfer", vec![next_admin_bytes.clone().into(), accept_sig.into()], true);
+    let accept_tx = Transaction::new(1, vec![tx_input_from_outpoint(TransactionOutpoint { transaction_id: propose_tx.id(), index: 0 }, accept_sigscript)], accept_outputs, 0, Default::default(), 0, vec![]);
+    execute_input_with_covenants(accept_tx.clone(), accept_entries, 0).expect("accept should succeed");
+
+    let next_minter_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![controller_cov_id.as_bytes().to_vec().into(), 0.into(), Expr::byte(IDENTIFIER_COVENANT_ID), Expr::bool(true), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let recipient_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![recipient_bytes.clone().into(), BAD_MINT.into(), Expr::byte(IDENTIFIER_PUBKEY), Expr::bool(false), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let mint_outputs = vec![
+        covenant_output(&next_minter_asset, 0, asset_cov_id),
+        covenant_output(&recipient_asset, 0, asset_cov_id),
+        covenant_output(&accepted_state, 1, controller_cov_id),
+    ];
+    let mint_entries = vec![
+        output_utxo(&init_tx.outputs[0], &init_tx, asset_cov_id),
+        output_utxo(&accept_tx.outputs[0], &accept_tx, controller_cov_id),
+    ];
+    let mint_unsigned = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 0 }, vec![]),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: accept_tx.id(), index: 0 }, vec![]),
+        ],
+        mint_outputs.clone(),
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+    let stale_admin_sig = sign_tx_input(mint_unsigned.clone(), mint_entries.clone(), 1, &admin);
+    let asset_sigscript = covenant_decl_sigscript(
+        &asset_genesis,
+        "transfer",
+        vec![
+            kcc20_state_array_arg_full(vec![
+                (controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+                (recipient_bytes.clone(), IDENTIFIER_PUBKEY, BAD_MINT, false),
+            ]),
+            sig_array_arg(vec![]),
+            witness_array_arg(vec![1]),
+        ],
+        true,
+    );
+    let stale_controller_sigscript = covenant_decl_sigscript(
+        &accepted_state,
+        "mint",
+        vec![
+            ownable_state_arg(next_admin_bytes.clone(), false, next_admin_bytes.clone(), asset_cov_id.as_bytes().to_vec(), true),
+            admin_bytes.into(),
+            stale_admin_sig.into(),
+            kcc20_state_arg(controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+            kcc20_state_arg(recipient_bytes, IDENTIFIER_PUBKEY, BAD_MINT, false),
+        ],
+        true,
+    );
+    let mint_tx = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 0 }, asset_sigscript),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: accept_tx.id(), index: 0 }, stale_controller_sigscript),
+        ],
+        mint_outputs,
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+
+    let err = execute_input_with_covenants(mint_tx, mint_entries, 1).expect_err("old admin should fail after acceptance");
     assert_verify_like_error(err);
 }

@@ -10,7 +10,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 18/18 vitest compile suite + 49/49 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 18/18 vitest compile suite + 51/51 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -104,8 +104,13 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
   - pause transition
   - unpause transition
   - paused mint rejection
-- This lifts the runtime suite from **46 → 49** passing tests and proves the basic controller+asset lifecycle shape for the 4.x family.
-- Next runtime targets: `KCC20Ownable` (admin handoff + mint during pending transfer) and `KCC20Vesting` (schedule-gated mint + pre-cliff reject).
+- **KCC20Ownable** now has runtime coverage for:
+  - admin-transfer proposal
+  - current-admin mint while transfer is pending
+  - accepted new-admin mint
+  - stale old-admin rejection after acceptance
+- This lifts the runtime suite from **46 → 51** passing tests and proves the basic controller+asset lifecycle shape for the 4.x family.
+- Next runtime target: `KCC20Vesting` (schedule-gated mint + pre-cliff reject).
 
 ## Phase 4 — KCC20 token patterns (current)
 
