@@ -187,6 +187,42 @@ export const patternManifest: PatternManifestEntry[] = [
     contractPath: 'contracts/tokens/kcc20-vesting.sil',
     docPath: 'docs/patterns/tokens/kcc20-vesting.md',
   },
+  {
+    id: 'zk-aware.verified-computation',
+    title: 'Verified Computation',
+    phase: 'zk-aware',
+    stateful: false,
+    status: 'planned',
+    summary: 'Covenant releasing funds on a valid Groth16 proof. Phase 5 reference pattern; pins canonical OpZkPrecompile stack order.',
+    docPath: 'docs/patterns/zk/verified-computation.md',
+  },
+  {
+    id: 'zk-aware.private-asset-transfer',
+    title: 'Private Asset Transfer',
+    phase: 'zk-aware',
+    stateful: true,
+    status: 'planned',
+    summary: 'Commitment + nullifier accumulator + Groth16 verification for confidential transfers; trust model is selective-disclosure.',
+    docPath: 'docs/patterns/zk/private-asset-transfer.md',
+  },
+  {
+    id: 'zk-aware.zk-verified-oracle',
+    title: 'ZK-Verified Oracle',
+    phase: 'zk-aware',
+    stateful: true,
+    status: 'planned',
+    summary: 'M-of-N committee + Groth16 proof of correct computation over a committed data source.',
+    docPath: 'docs/patterns/zk/zk-verified-oracle.md',
+  },
+  {
+    id: 'zk-aware.proof-stitched-multi-pattern',
+    title: 'Proof-Stitched Multi-Pattern',
+    phase: 'zk-aware',
+    stateful: true,
+    status: 'planned',
+    summary: 'One Groth16 verification shared across N covenant inputs via KIP-20 covenant context. vProgs forward-compat target.',
+    docPath: 'docs/patterns/zk/proof-stitched-multi-pattern.md',
+  },
 ];
 
 export function listPatterns(): PatternManifestEntry[] {
