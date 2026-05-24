@@ -95,7 +95,7 @@ All items above complete → flip `STATUS.md` to reflect Phase 2 completion and 
 Pattern 4.1 KCC20 asset contract is scaffolded with vitest compile coverage. Five controller-covenant variants have stub docs at `docs/patterns/tokens/`; each captures the intended shape so implementation can pick up without re-deriving design choices. In order:
 
 1. **4.4 KCC20Capped** — runtime lifecycle coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (init/asset binding + happy-path mint + over-cap reject). Next work: SDK glue for the three-output mint shape.
-2. **4.3 KCC20Pausable** — scaffold landed at `contracts/tokens/kcc20-pausable.sil`. Next work: runtime coverage for pause/unpause + paused-mint rejection.
+2. **4.3 KCC20Pausable** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pause + unpause + paused-mint reject).
 3. **4.2 KCC20Ownable** — scaffold landed at `contracts/tokens/kcc20-ownable.sil`. Next work: runtime coverage for admin handoff + mint-authority persistence during pending transfer.
 4. **4.5 KCC20Vesting** — scaffold landed at `contracts/tokens/kcc20-vesting.sil`. Next work: runtime coverage for schedule-gated issuance and decide whether a future terminating variant is worth the lineage complexity.
 5. **4.6 KCC20Snapshot** — wait for KIP-21 lane stability before implementing.
