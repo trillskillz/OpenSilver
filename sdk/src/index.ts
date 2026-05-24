@@ -192,8 +192,9 @@ export const patternManifest: PatternManifestEntry[] = [
     title: 'Verified Computation',
     phase: 'zk-aware',
     stateful: false,
-    status: 'planned',
-    summary: 'Covenant releasing funds on a valid Groth16 proof. Phase 5 reference pattern; pins canonical OpZkPrecompile stack order.',
+    status: 'scaffolded',
+    summary: 'Covenant releasing funds on a valid Groth16 proof + prover signature. Compiles via the OpenSilver Phase-5 patch lane (npm run patch:silverc:zk); runtime-verified with a real Groth16 fixture.',
+    contractPath: 'contracts/zk/verified-computation.sil',
     docPath: 'docs/patterns/zk/verified-computation.md',
   },
   {

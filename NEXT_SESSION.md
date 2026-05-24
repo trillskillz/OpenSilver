@@ -136,11 +136,11 @@ Three unblock paths (in order of preference):
 3. **Raw-script splice** at the OpenSilver compile pipeline level: run `silverc`, then walk the emitted bytecode and insert `OpZkPrecompile` (`0xa6`) at a marker-comment position. Brittle stopgap; remove the moment a proper front-end surface lands.
 4. **Re-pin OpenSilver immediately if/when the upstream fix lands**, then implement 5.1 Verified Computation first.
 
-Implementation order once unblocked:
+Implementation order:
 
-1. **5.1 Verified Computation** — simplest. Pins down the Groth16 stack-order pattern that 5.2–5.4 build on. The first SDK safety rail is already landed as `buildGroth16WitnessPlan()` in `sdk/src/index.ts`; next work is to thread that helper into an actual compiled `.sil` contract once the upstream builtin patch is available (or the local patch lane is explicitly used for prototyping).
-2. **5.3 ZK-Verified Oracle** — combines 5.1's Groth16 surface with the HodlVault-style M-of-N committee threshold. Demonstrates composition.
-3. **5.2 Private Asset Transfer** — most ambitious; circuit IS the pattern. Needs a working Groth16 prover for a specific circuit before the covenant is meaningful.
+1. ✅ **5.1 Verified Computation** — DONE 2026-05-24. `contracts/zk/verified-computation.sil` compiles via the local patch lane and runtime-verifies a real Groth16 fixture end-to-end through `kaspa-txscript`. Three runtime tests in `runtime-tests/tests/zk_runtime.rs` (positive + tampered-proof + wrong-prover). **Patch correctness fix surfaced this round**: the patch was pushing public inputs in source order; the engine pops from the top so they were reversed. Fixed locally — needs folding back into `kaspanet/silverscript#125` before upstream merge.
+2. **5.3 ZK-Verified Oracle** — NEXT. Combines 5.1's Groth16 surface with the HodlVault-style M-of-N committee threshold. Demonstrates composition with an existing Phase-3 idiom. Runtime test can reuse the same Groth16 fixture; needs to add a 2-of-3 committee signature step.
+3. **5.2 Private Asset Transfer** — most ambitious; circuit IS the pattern. Needs a working Groth16 prover for a specific circuit before the covenant is meaningful. Defer until we have a real commitment/nullifier circuit to bind against.
 4. **5.4 Proof-Stitched Multi-Pattern** — the vProgs forward-compat target. Should be LAST; needs 5.1's stack-order pattern stable and battle-tested first.
 
 Each implementation needs:

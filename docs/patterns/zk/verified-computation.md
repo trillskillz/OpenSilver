@@ -1,6 +1,12 @@
 # Verified Computation — Pattern 5.1
 
-Status: DESIGN. Blocked on silverscript-lang exposing `OpZkPrecompile`. See `docs/patterns/zk/README.md` for the unblock paths.
+Status: **SCAFFOLDED + RUNTIME-VERIFIED (local patch lane)**. The contract source lives at `contracts/zk/verified-computation.sil`; it compiles under the OpenSilver Phase-5 patch lane (`npm run patch:silverc:zk`) and runtime-verifies a real Groth16 proof end-to-end through `kaspa-txscript`'s `TxScriptEngine`. Three runtime tests live at `runtime-tests/tests/zk_runtime.rs`:
+
+- `verified_computation_accepts_valid_groth16_proof` — exercises the vendored fixture (`references/fixtures/groth16-opzkprecompile-fixture.json`, copied from `rusty-kaspa#775`'s engine-side KIP-16 test vector). Engine accepts.
+- `verified_computation_rejects_tampered_proof` — same shape with one byte of the proof flipped. Engine rejects with `ZkIntegrity`.
+- `verified_computation_rejects_wrong_prover_signature` — valid proof but attacker signature in the prover slot. The `require(prover_pk == prover)` gate fires.
+
+Upstream compiler PR `kaspanet/silverscript#125` is still OPEN. The local patch in `patches/silverscript-opzkprecompile.patch` carries a **stack-order correctness fix** discovered via real Groth16 fixture testing: public inputs must be pushed in REVERSE source order so the engine's `pop n_inputs times from the top` loop reads them back as `[pi0..pi{n-1}]`. The earlier prototype pushed in source order, which produced `[pi{n-1}..pi0]` — undetectable from AST-only smoke tests. This fix needs folding back into the upstream PR before merge.
 
 ## Summary
 
