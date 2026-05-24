@@ -97,7 +97,7 @@ Pattern 4.1 KCC20 asset contract is scaffolded with vitest compile coverage. Fiv
 1. **4.4 KCC20Capped** — runtime lifecycle coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (init/asset binding + happy-path mint + over-cap reject). Next work: SDK glue for the three-output mint shape.
 2. **4.3 KCC20Pausable** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pause + unpause + paused-mint reject).
 3. **4.2 KCC20Ownable** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pending-transfer mint + accepted-admin mint + stale-admin reject).
-4. **4.5 KCC20Vesting** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pre-cliff reject + first scheduled mint). Next work: decide whether to add second-period/final-drain cases or leave that to later lifecycle helpers.
+4. **4.5 KCC20Vesting** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pre-cliff reject + first scheduled mint + second-period mint + final-drain mint).
 5. **4.6 KCC20Snapshot** — wait for KIP-21 lane stability before implementing.
 
 Each variant needs:

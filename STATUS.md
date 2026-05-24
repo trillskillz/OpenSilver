@@ -10,7 +10,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 18/18 vitest compile suite + 52/52 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 18/18 vitest compile suite + 53/53 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -112,7 +112,9 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
 - **KCC20Vesting** now has runtime coverage for:
   - pre-cliff rejection (`UnsatisfiedLockTime` at the tx locktime layer)
   - first scheduled mint at cliff
-- This lifts the runtime suite from **46 → 52** passing tests and proves the basic controller+asset lifecycle shape for the 4.x family.
+  - second-period scheduled mint
+  - final-drain mint where the remaining allocation is less than `releasePerPeriod`
+- This lifts the runtime suite from **46 → 53** passing tests and proves the basic controller+asset lifecycle shape for the 4.x family, including vesting continuation across multiple periods and terminal controller drain behavior.
 - Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is SDK glue and richer KCC20 multi-step helpers.
 
 ## Phase 4 — KCC20 token patterns (current)

@@ -1476,3 +1476,297 @@ fn kcc20_vesting_rejects_pre_cliff_and_accepts_scheduled_mint() {
     );
     execute_input_with_covenants(mint_tx, mint_entries, 1).expect("vesting mint at cliff should succeed");
 }
+
+
+#[test]
+fn kcc20_vesting_supports_second_period_and_final_drain() {
+    const IDENTIFIER_COVENANT_ID: u8 = 0x02;
+    const IDENTIFIER_PUBKEY: u8 = 0x00;
+    const MAX_COV_INS: i64 = 2;
+    const MAX_COV_OUTS: i64 = 2;
+    const TOTAL_ALLOCATION: i64 = 250;
+    const RELEASE_PER_PERIOD: i64 = 100;
+    const CLIFF_TIME: u64 = 75;
+    const PERIOD: i64 = 10;
+    const FINAL_RELEASE: i64 = 50;
+
+    let admin = random_keypair();
+    let beneficiary = random_keypair();
+    let admin_bytes = admin.x_only_public_key().0.serialize().to_vec();
+    let beneficiary_bytes = beneficiary.x_only_public_key().0.serialize().to_vec();
+    let placeholder_kcc20_covid = Hash::from_bytes([0; 32]);
+
+    let asset_template_probe = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![vec![0u8; 32].into(), 0.into(), Expr::byte(IDENTIFIER_COVENANT_ID), Expr::bool(true), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let (template_prefix, template_suffix, expected_template_hash) = compiled_template_parts_and_hash(&asset_template_probe);
+
+    let compile_vesting = |minted_amount: i64, cliff_time: i64, kcc20_covid: Hash, initialized: bool| {
+        compile_contract_file(
+            "contracts/tokens/kcc20-vesting.sil",
+            vec![
+                admin_bytes.clone().into(),
+                beneficiary_bytes.clone().into(),
+                TOTAL_ALLOCATION.into(),
+                minted_amount.into(),
+                cliff_time.into(),
+                PERIOD.into(),
+                RELEASE_PER_PERIOD.into(),
+                kcc20_covid.as_bytes().to_vec().into(),
+                Expr::bool(initialized),
+                (template_prefix.len() as i64).into(),
+                (template_suffix.len() as i64).into(),
+                expected_template_hash.clone().into(),
+                template_prefix.clone().into(),
+                template_suffix.clone().into(),
+            ],
+        )
+    };
+
+    let pre_init = compile_vesting(0, CLIFF_TIME as i64, placeholder_kcc20_covid, false);
+    let funding_outpoint = TransactionOutpoint { transaction_id: TransactionId::from_bytes([0xad; 32]), index: 0 };
+    let pre_init_output_without_covenant = TransactionOutput { value: 1_000, script_public_key: pay_to_script_hash_script(&pre_init.script), covenant: None };
+    let controller_cov_id = hashing::covenant_id::covenant_id(funding_outpoint, std::iter::once((0, &pre_init_output_without_covenant)));
+    let pre_init_genesis_tx = Transaction::new(
+        1,
+        vec![TransactionInput::new(funding_outpoint, vec![], 0, 0)],
+        vec![TransactionOutput { covenant: Some(kaspa_consensus_core::tx::CovenantBinding { authorizing_input: 0, covenant_id: controller_cov_id }), ..pre_init_output_without_covenant }],
+        0,
+        Default::default(),
+        0,
+        vec![],
+    );
+
+    let asset_genesis = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![
+            controller_cov_id.as_bytes().to_vec().into(),
+            0.into(),
+            Expr::byte(IDENTIFIER_COVENANT_ID),
+            Expr::bool(true),
+            MAX_COV_INS.into(),
+            MAX_COV_OUTS.into(),
+        ],
+    );
+    let asset_genesis_outpoint = TransactionOutpoint { transaction_id: pre_init_genesis_tx.id(), index: 0 };
+    let asset_genesis_output = covenant_output(&asset_genesis, 0, Hash::from_bytes([0; 32]));
+    let asset_cov_id = hashing::covenant_id::covenant_id(asset_genesis_outpoint, std::iter::once((0, &asset_genesis_output)));
+    let post_init = compile_vesting(0, CLIFF_TIME as i64, asset_cov_id, true);
+
+    let init_outputs = vec![covenant_output(&asset_genesis, 0, asset_cov_id), covenant_output(&post_init, 0, controller_cov_id)];
+    let init_entries = vec![output_utxo(&pre_init_genesis_tx.outputs[0], &pre_init_genesis_tx, controller_cov_id)];
+    let init_unsigned = Transaction::new(1, vec![tx_input_from_outpoint(asset_genesis_outpoint, vec![])], init_outputs.clone(), 0, Default::default(), 0, vec![]);
+    let init_sig = sign_tx_input(init_unsigned.clone(), init_entries.clone(), 0, &admin);
+    let init_sigscript = covenant_decl_sigscript(
+        &pre_init,
+        "init",
+        vec![vesting_state_arg(TOTAL_ALLOCATION, 0, CLIFF_TIME as i64, PERIOD, RELEASE_PER_PERIOD, asset_cov_id.as_bytes().to_vec(), true), init_sig.into()],
+        true,
+    );
+    let init_tx = Transaction::new(1, vec![tx_input_from_outpoint(asset_genesis_outpoint, init_sigscript)], init_outputs, 0, Default::default(), 0, vec![]);
+    execute_input_with_covenants(init_tx.clone(), init_entries, 0).expect("vesting init should succeed");
+
+    let continuing_minter_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![controller_cov_id.as_bytes().to_vec().into(), 0.into(), Expr::byte(IDENTIFIER_COVENANT_ID), Expr::bool(true), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+
+    let first_recipient_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![beneficiary_bytes.clone().into(), RELEASE_PER_PERIOD.into(), Expr::byte(IDENTIFIER_PUBKEY), Expr::bool(false), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let first_post_mint = compile_vesting(RELEASE_PER_PERIOD, CLIFF_TIME as i64 + PERIOD, asset_cov_id, true);
+    let first_outputs = vec![
+        covenant_output(&continuing_minter_asset, 0, asset_cov_id),
+        covenant_output(&first_recipient_asset, 0, asset_cov_id),
+        covenant_output(&first_post_mint, 1, controller_cov_id),
+    ];
+    let first_entries = vec![
+        output_utxo(&init_tx.outputs[0], &init_tx, asset_cov_id),
+        output_utxo(&init_tx.outputs[1], &init_tx, controller_cov_id),
+    ];
+    let first_unsigned = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 0 }, vec![]),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 1 }, vec![]),
+        ],
+        first_outputs.clone(),
+        CLIFF_TIME,
+        Default::default(),
+        0,
+        vec![],
+    );
+    let first_beneficiary_sig = sign_tx_input(first_unsigned.clone(), first_entries.clone(), 1, &beneficiary);
+    let first_asset_sigscript = covenant_decl_sigscript(
+        &asset_genesis,
+        "transfer",
+        vec![
+            kcc20_state_array_arg_full(vec![
+                (controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+                (beneficiary_bytes.clone(), IDENTIFIER_PUBKEY, RELEASE_PER_PERIOD, false),
+            ]),
+            sig_array_arg(vec![]),
+            witness_array_arg(vec![1]),
+        ],
+        true,
+    );
+    let first_controller_sigscript = covenant_decl_sigscript(
+        &post_init,
+        "mint",
+        vec![
+            vesting_state_arg(TOTAL_ALLOCATION, RELEASE_PER_PERIOD, CLIFF_TIME as i64 + PERIOD, PERIOD, RELEASE_PER_PERIOD, asset_cov_id.as_bytes().to_vec(), true),
+            beneficiary_bytes.clone().into(),
+            first_beneficiary_sig.into(),
+            kcc20_state_arg(controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+            kcc20_state_arg(beneficiary_bytes.clone(), IDENTIFIER_PUBKEY, RELEASE_PER_PERIOD, false),
+        ],
+        true,
+    );
+    let first_mint_tx = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 0 }, first_asset_sigscript),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: init_tx.id(), index: 1 }, first_controller_sigscript),
+        ],
+        first_outputs,
+        CLIFF_TIME,
+        Default::default(),
+        0,
+        vec![],
+    );
+    execute_input_with_covenants(first_mint_tx.clone(), first_entries, 1).expect("first vesting mint should succeed");
+
+    let second_recipient_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![beneficiary_bytes.clone().into(), RELEASE_PER_PERIOD.into(), Expr::byte(IDENTIFIER_PUBKEY), Expr::bool(false), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let second_post_mint = compile_vesting(RELEASE_PER_PERIOD * 2, CLIFF_TIME as i64 + (PERIOD * 2), asset_cov_id, true);
+    let second_outputs = vec![
+        covenant_output(&continuing_minter_asset, 0, asset_cov_id),
+        covenant_output(&second_recipient_asset, 0, asset_cov_id),
+        covenant_output(&second_post_mint, 1, controller_cov_id),
+    ];
+    let second_entries = vec![
+        output_utxo(&first_mint_tx.outputs[0], &first_mint_tx, asset_cov_id),
+        output_utxo(&first_mint_tx.outputs[2], &first_mint_tx, controller_cov_id),
+    ];
+    let second_unsigned = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: first_mint_tx.id(), index: 0 }, vec![]),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: first_mint_tx.id(), index: 2 }, vec![]),
+        ],
+        second_outputs.clone(),
+        CLIFF_TIME + (PERIOD as u64),
+        Default::default(),
+        0,
+        vec![],
+    );
+    let second_beneficiary_sig = sign_tx_input(second_unsigned.clone(), second_entries.clone(), 1, &beneficiary);
+    let second_asset_sigscript = covenant_decl_sigscript(
+        &continuing_minter_asset,
+        "transfer",
+        vec![
+            kcc20_state_array_arg_full(vec![
+                (controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+                (beneficiary_bytes.clone(), IDENTIFIER_PUBKEY, RELEASE_PER_PERIOD, false),
+            ]),
+            sig_array_arg(vec![]),
+            witness_array_arg(vec![1]),
+        ],
+        true,
+    );
+    let second_controller_sigscript = covenant_decl_sigscript(
+        &first_post_mint,
+        "mint",
+        vec![
+            vesting_state_arg(TOTAL_ALLOCATION, RELEASE_PER_PERIOD * 2, CLIFF_TIME as i64 + (PERIOD * 2), PERIOD, RELEASE_PER_PERIOD, asset_cov_id.as_bytes().to_vec(), true),
+            beneficiary_bytes.clone().into(),
+            second_beneficiary_sig.into(),
+            kcc20_state_arg(controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+            kcc20_state_arg(beneficiary_bytes.clone(), IDENTIFIER_PUBKEY, RELEASE_PER_PERIOD, false),
+        ],
+        true,
+    );
+    let second_mint_tx = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: first_mint_tx.id(), index: 0 }, second_asset_sigscript),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: first_mint_tx.id(), index: 2 }, second_controller_sigscript),
+        ],
+        second_outputs,
+        CLIFF_TIME + (PERIOD as u64),
+        Default::default(),
+        0,
+        vec![],
+    );
+    execute_input_with_covenants(second_mint_tx.clone(), second_entries, 1).expect("second vesting mint should succeed");
+
+    let final_recipient_asset = compile_contract_file(
+        "contracts/tokens/kcc20.sil",
+        vec![beneficiary_bytes.clone().into(), FINAL_RELEASE.into(), Expr::byte(IDENTIFIER_PUBKEY), Expr::bool(false), MAX_COV_INS.into(), MAX_COV_OUTS.into()],
+    );
+    let final_post_mint = compile_vesting(TOTAL_ALLOCATION, CLIFF_TIME as i64 + (PERIOD * 3), asset_cov_id, true);
+    let final_outputs = vec![
+        covenant_output(&continuing_minter_asset, 0, asset_cov_id),
+        covenant_output(&final_recipient_asset, 0, asset_cov_id),
+        covenant_output(&final_post_mint, 1, controller_cov_id),
+    ];
+    let final_entries = vec![
+        output_utxo(&second_mint_tx.outputs[0], &second_mint_tx, asset_cov_id),
+        output_utxo(&second_mint_tx.outputs[2], &second_mint_tx, controller_cov_id),
+    ];
+    let final_unsigned = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: second_mint_tx.id(), index: 0 }, vec![]),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: second_mint_tx.id(), index: 2 }, vec![]),
+        ],
+        final_outputs.clone(),
+        CLIFF_TIME + ((PERIOD * 2) as u64),
+        Default::default(),
+        0,
+        vec![],
+    );
+    let final_beneficiary_sig = sign_tx_input(final_unsigned.clone(), final_entries.clone(), 1, &beneficiary);
+    let final_asset_sigscript = covenant_decl_sigscript(
+        &continuing_minter_asset,
+        "transfer",
+        vec![
+            kcc20_state_array_arg_full(vec![
+                (controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+                (beneficiary_bytes.clone(), IDENTIFIER_PUBKEY, FINAL_RELEASE, false),
+            ]),
+            sig_array_arg(vec![]),
+            witness_array_arg(vec![1]),
+        ],
+        true,
+    );
+    let final_controller_sigscript = covenant_decl_sigscript(
+        &second_post_mint,
+        "mint",
+        vec![
+            vesting_state_arg(TOTAL_ALLOCATION, TOTAL_ALLOCATION, CLIFF_TIME as i64 + (PERIOD * 3), PERIOD, RELEASE_PER_PERIOD, asset_cov_id.as_bytes().to_vec(), true),
+            beneficiary_bytes.clone().into(),
+            final_beneficiary_sig.into(),
+            kcc20_state_arg(controller_cov_id.as_bytes().to_vec(), IDENTIFIER_COVENANT_ID, 0, true),
+            kcc20_state_arg(beneficiary_bytes, IDENTIFIER_PUBKEY, FINAL_RELEASE, false),
+        ],
+        true,
+    );
+    let final_mint_tx = Transaction::new(
+        1,
+        vec![
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: second_mint_tx.id(), index: 0 }, final_asset_sigscript),
+            tx_input_from_outpoint(TransactionOutpoint { transaction_id: second_mint_tx.id(), index: 2 }, final_controller_sigscript),
+        ],
+        final_outputs,
+        CLIFF_TIME + ((PERIOD * 2) as u64),
+        Default::default(),
+        0,
+        vec![],
+    );
+    execute_input_with_covenants(final_mint_tx, final_entries, 1).expect("final vesting drain should succeed");
+}
