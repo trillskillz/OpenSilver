@@ -10,7 +10,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 21/21 vitest files (28/28 tests) + 53/53 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 22/22 vitest files (30/30 tests) + 53/53 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -130,7 +130,11 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
 - Extended that integration layer with RPC-backed preflight resolution plus `tests/kcc20-rpc-integration.test.ts` covering:
   - `resolveKaspaKcc20TransactionPackage`, which uses the documented direct-node `getUtxosByAddresses` + UTXO subscription surface to resolve package inputs against concrete Kaspa addresses
   - `buildKaspaKcc20DeploymentRequests`, which converts resolved packages into builder-ready stage requests for controller genesis, asset genesis, and initialized-controller continuation
-- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is plugging these resolved stage requests into a concrete Kaspa transaction builder/signing implementation.
+- Added concrete builder/signing execution in `integrations/src/index.ts` plus `tests/kcc20-builder-integration.test.ts` covering:
+  - `buildKaspaStageExecutionPlan`, which resolves stage outputs into real Generator settings (`utxoEntries`, `outputs`, `changeAddress`, optional `priorityFee`)
+  - `executeKaspaStageBuild`, which consumes `Generator.next()`, signs each `PendingTransaction`, optionally submits it, and serializes captured artifacts
+  - `executeKaspaKcc20Deployment`, which runs the full three-stage controller-genesis → asset-genesis → initialized-controller flow with stage-specific signer payloads and amount overrides
+- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is binding these adapter surfaces to a concrete Kaspa WASM package and transaction-field population for covenant-specific scripts.
 
 ## Phase 4 — KCC20 token patterns (current)
 

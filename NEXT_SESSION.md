@@ -99,7 +99,7 @@ Pattern 4.1 KCC20 asset contract is scaffolded with vitest compile coverage. Fiv
 3. **4.2 KCC20Ownable** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pending-transfer mint + accepted-admin mint + stale-admin reject).
 4. **4.5 KCC20Vesting** — runtime coverage landed in `runtime-tests/tests/kcc20_runtime.rs` (pre-cliff reject + first scheduled mint + second-period mint + final-drain mint).
 5. **4.6 KCC20Snapshot** — wait for KIP-21 lane stability before implementing.
-6. **KCC20 SDK follow-through** — helper surface now covers planning/state normalization, transaction-shape planning, compile/deploy spec bundles, a real TS-side `silverc` wrapper, deploy-ready compiled flow assembly, broadcast-ready transaction assembly inputs, Kaspa-facing transaction packages, and RPC-backed UTXO resolution/build-request preparation in `integrations/`. Next work: plug these resolved stage requests into a concrete Kaspa transaction builder/signing implementation.
+6. **KCC20 SDK follow-through** — helper surface now covers planning/state normalization, transaction-shape planning, compile/deploy spec bundles, a real TS-side `silverc` wrapper, deploy-ready compiled flow assembly, broadcast-ready transaction assembly inputs, Kaspa-facing transaction packages, RPC-backed UTXO resolution/build-request preparation, and concrete Generator/PendingTransaction-based stage execution in `integrations/`. Next work: bind these adapters to a specific Kaspa WASM package and start filling real covenant/script transaction fields instead of only generic payment outputs.
 
 Each variant needs:
 - `contracts/tokens/<name>.sil` controller covenant

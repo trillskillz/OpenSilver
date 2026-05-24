@@ -312,3 +312,264 @@ export function buildKaspaKcc20DeploymentRequests<TArtifact = unknown, TUtxo = K
     },
   };
 }
+
+export interface KaspaGeneratorOutput {
+  address: string;
+  amount: bigint;
+}
+
+export interface KaspaGeneratorSettings<TUtxo = KaspaRpcUtxoEntry> {
+  utxoEntries: TUtxo[];
+  changeAddress: string;
+  outputs: KaspaGeneratorOutput[];
+  priorityFee?: bigint;
+}
+
+export interface KaspaPendingTransactionLike {
+  id?: string;
+  sign(signers: unknown[] | unknown, checkFullySigned?: boolean): Promise<void> | void;
+  submit?(rpc: unknown): Promise<string> | string;
+  serializeToSafeJSON?(): string;
+  serializeToJSON?(): string;
+  toJSON?(): unknown;
+}
+
+export interface KaspaGeneratorLike {
+  next(): Promise<KaspaPendingTransactionLike | null | undefined>;
+  estimate?(): Promise<unknown>;
+  summary?(): unknown;
+}
+
+export type KaspaGeneratorFactory<TUtxo = KaspaRpcUtxoEntry> = (
+  settings: KaspaGeneratorSettings<TUtxo>,
+) => KaspaGeneratorLike;
+
+export interface KaspaStageAmountOverrides {
+  controller?: bigint | number;
+  assetMinter?: bigint | number;
+  assetRecipient?: bigint | number;
+}
+
+export interface KaspaStageExecutionOptions {
+  changeAddress: string;
+  priorityFee?: bigint | number;
+  amounts?: KaspaStageAmountOverrides;
+  signers?: Record<string, unknown[] | unknown>;
+  submit?: boolean;
+  rpc?: unknown;
+  checkFullySigned?: boolean;
+}
+
+export interface KaspaStageExecutionPlan<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry> {
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>;
+  generatorSettings: KaspaGeneratorSettings<TUtxo>;
+  signerPayloads: Array<unknown[] | unknown>;
+}
+
+export interface KaspaExecutedPendingTransaction {
+  id?: string;
+  serialized?: string;
+}
+
+export interface KaspaExecutedStage<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry> {
+  stage: KaspaStageBuildRequest<TArtifact, TUtxo>['stage'];
+  entrypoint?: string;
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>;
+  generatorSettings: KaspaGeneratorSettings<TUtxo>;
+  pendingTransactions: KaspaExecutedPendingTransaction[];
+  submittedTxIds: string[];
+}
+
+export interface KaspaExecutedDeployment<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry> {
+  controllerKind: Kcc20ControllerKind;
+  stages: {
+    controllerGenesis: KaspaExecutedStage<TArtifact, TUtxo>;
+    assetGenesis: KaspaExecutedStage<TArtifact, TUtxo>;
+    controllerInitialized: KaspaExecutedStage<TArtifact, TUtxo>;
+  };
+}
+
+function toBigIntAmount(value: bigint | number, label: string): bigint {
+  const result = typeof value === 'bigint' ? value : BigInt(value);
+  if (result < 0n) {
+    throw new Error(`${label} cannot be negative`);
+  }
+  return result;
+}
+
+function resolveStageOutputAmount(
+  output: KaspaBuilderOutput,
+  amounts: KaspaStageAmountOverrides | undefined,
+): bigint {
+  if (typeof output.amountSompi === 'number') {
+    return BigInt(output.amountSompi);
+  }
+
+  if (output.amountSompi === '<caller-specified>') {
+    if (output.role === 'controller') {
+      if (amounts?.controller === undefined) {
+        throw new Error('controller output amount is required');
+      }
+      return toBigIntAmount(amounts.controller, 'controller output amount');
+    }
+
+    if (output.role === 'asset-minter') {
+      if (amounts?.assetMinter === undefined) {
+        throw new Error('asset minter output amount is required');
+      }
+      return toBigIntAmount(amounts.assetMinter, 'asset minter output amount');
+    }
+  }
+
+  if (output.amountSompi === '<minted-amount>') {
+    if (amounts?.assetRecipient === undefined) {
+      throw new Error('asset recipient output amount is required');
+    }
+    return toBigIntAmount(amounts.assetRecipient, 'asset recipient output amount');
+  }
+
+  throw new Error(`unsupported output amount placeholder: ${String(output.amountSompi)}`);
+}
+
+function flattenStageUtxos<TUtxo>(inputs: KaspaResolvedInput<TUtxo>[]): TUtxo[] {
+  return inputs.flatMap((input) => input.utxos);
+}
+
+function getStageSignerPayloads<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry>(
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>,
+  signers: Record<string, unknown[] | unknown> | undefined,
+): Array<unknown[] | unknown> {
+  return request.requiredSigners.map((label) => {
+    const payload = signers?.[label];
+    if (payload === undefined) {
+      throw new Error(`missing signer payload for required signer: ${label}`);
+    }
+    return payload;
+  });
+}
+
+export function buildKaspaStageExecutionPlan<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry>(
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>,
+  options: KaspaStageExecutionOptions,
+): KaspaStageExecutionPlan<TArtifact, TUtxo> {
+  const outputs = request.outputs.map((output) => ({
+    address: output.owner,
+    amount: resolveStageOutputAmount(output, options.amounts),
+  }));
+
+  const generatorSettings: KaspaGeneratorSettings<TUtxo> = {
+    utxoEntries: flattenStageUtxos(request.inputs),
+    changeAddress: options.changeAddress,
+    outputs,
+    ...(options.priorityFee !== undefined
+      ? { priorityFee: toBigIntAmount(options.priorityFee, 'priorityFee') }
+      : {}),
+  };
+
+  return {
+    request,
+    generatorSettings,
+    signerPayloads: getStageSignerPayloads(request, options.signers),
+  };
+}
+
+function serializePendingTransaction(pending: KaspaPendingTransactionLike): string | undefined {
+  if (pending.serializeToSafeJSON) {
+    return pending.serializeToSafeJSON();
+  }
+  if (pending.serializeToJSON) {
+    return pending.serializeToJSON();
+  }
+  if (pending.toJSON) {
+    return JSON.stringify(pending.toJSON());
+  }
+  return undefined;
+}
+
+export async function executeKaspaStageBuild<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry>(
+  request: KaspaStageBuildRequest<TArtifact, TUtxo>,
+  options: KaspaStageExecutionOptions & { generatorFactory: KaspaGeneratorFactory<TUtxo> },
+): Promise<KaspaExecutedStage<TArtifact, TUtxo>> {
+  const plan = buildKaspaStageExecutionPlan(request, options);
+  const generator = options.generatorFactory(plan.generatorSettings);
+  const pendingTransactions: KaspaExecutedPendingTransaction[] = [];
+  const submittedTxIds: string[] = [];
+
+  while (true) {
+    const pending = await generator.next();
+    if (!pending) {
+      break;
+    }
+
+    for (const signerPayload of plan.signerPayloads) {
+      await pending.sign(signerPayload, options.checkFullySigned);
+    }
+
+    const serialized = serializePendingTransaction(pending);
+    pendingTransactions.push({
+      ...(pending.id ? { id: pending.id } : {}),
+      ...(serialized ? { serialized } : {}),
+    });
+
+    if (options.submit) {
+      if (!pending.submit) {
+        throw new Error(`stage ${request.stage} cannot submit because pending transaction has no submit() method`);
+      }
+      submittedTxIds.push(await pending.submit(options.rpc));
+    }
+  }
+
+  return {
+    stage: request.stage,
+    ...(request.entrypoint ? { entrypoint: request.entrypoint } : {}),
+    request,
+    generatorSettings: plan.generatorSettings,
+    pendingTransactions,
+    submittedTxIds,
+  };
+}
+
+export async function executeKaspaKcc20Deployment<TArtifact = unknown, TUtxo = KaspaRpcUtxoEntry>(
+  deployment: KaspaBuildableKcc20Deployment<TArtifact, TUtxo>,
+  options: {
+    generatorFactory: KaspaGeneratorFactory<TUtxo>;
+    stages: {
+      controllerGenesis: KaspaStageExecutionOptions;
+      assetGenesis: KaspaStageExecutionOptions;
+      controllerInitialized: KaspaStageExecutionOptions;
+    };
+  },
+): Promise<KaspaExecutedDeployment<TArtifact, TUtxo>> {
+  const controllerGenesis = await executeKaspaStageBuild(
+    deployment.buildRequests.controllerGenesis,
+    {
+      ...options.stages.controllerGenesis,
+      generatorFactory: options.generatorFactory,
+    },
+  );
+
+  const assetGenesis = await executeKaspaStageBuild(
+    deployment.buildRequests.assetGenesis,
+    {
+      ...options.stages.assetGenesis,
+      generatorFactory: options.generatorFactory,
+    },
+  );
+
+  const controllerInitialized = await executeKaspaStageBuild(
+    deployment.buildRequests.controllerInitialized,
+    {
+      ...options.stages.controllerInitialized,
+      generatorFactory: options.generatorFactory,
+    },
+  );
+
+  return {
+    controllerKind: deployment.controllerKind,
+    stages: {
+      controllerGenesis,
+      assetGenesis,
+      controllerInitialized,
+    },
+  };
+}
