@@ -1,3 +1,8 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+
 export type PatternPhase = 'core' | 'krc20' | 'zk-aware';
 
 export interface PatternManifestEntry {
@@ -357,6 +362,19 @@ export interface SilvercCompileSpec {
   contractPath: string;
   constructorArgs: Array<string | number | boolean>;
   mode: 'ast-only' | 'compile';
+}
+
+export interface SilvercCommandPlan {
+  binary: string;
+  args: string[];
+  constructorArgsPath?: string;
+  outputPath?: string;
+}
+
+export interface SilvercRunResult<TArtifact = unknown> {
+  spec: SilvercCompileSpec;
+  command: SilvercCommandPlan;
+  artifact: TArtifact;
 }
 
 export interface Kcc20DeploymentBundle {
@@ -722,7 +740,7 @@ function normalizeCompileMode(mode: 'ast-only' | 'compile' | undefined): 'ast-on
   return mode ?? 'compile';
 }
 
-function buildSilvercCompileSpec(
+export function buildSilvercCompileSpec(
   contractPath: string,
   constructorArgs: Array<string | number | boolean>,
   options: { silvercBinary?: string; mode?: 'ast-only' | 'compile' } = {},
@@ -733,6 +751,72 @@ function buildSilvercCompileSpec(
     constructorArgs,
     mode: normalizeCompileMode(options.mode),
   };
+}
+
+export function buildSilvercCommandPlan(
+  spec: SilvercCompileSpec,
+  options: {
+    repoRoot?: string;
+    constructorArgsPath?: string;
+    outputPath?: string;
+    stdout?: boolean;
+  } = {},
+): SilvercCommandPlan {
+  const binary = options.repoRoot ? resolve(options.repoRoot, spec.binary) : spec.binary;
+  const contractPath = options.repoRoot ? resolve(options.repoRoot, spec.contractPath) : spec.contractPath;
+  const args: string[] = [];
+
+  if (options.constructorArgsPath) {
+    args.push('--constructor-args', options.constructorArgsPath);
+  }
+
+  if (spec.mode === 'ast-only') {
+    args.push('--ast-only');
+  }
+
+  args.push(contractPath);
+
+  if (options.stdout) {
+    args.push('--stdout');
+  } else if (options.outputPath) {
+    args.push('--output', options.outputPath);
+  }
+
+  return {
+    binary,
+    args,
+    ...(options.constructorArgsPath ? { constructorArgsPath: options.constructorArgsPath } : {}),
+    ...(!options.stdout && options.outputPath ? { outputPath: options.outputPath } : {}),
+  };
+}
+
+export function runSilvercCompileSpec<TArtifact = unknown>(
+  spec: SilvercCompileSpec,
+  options: {
+    repoRoot?: string;
+    keepTempDir?: boolean;
+  } = {},
+): SilvercRunResult<TArtifact> {
+  const tempDir = mkdtempSync(join(tmpdir(), 'opensilver-sdk-silverc-'));
+  const constructorArgsPath = join(tempDir, 'ctor-args.json');
+  const outputPath = join(tempDir, spec.mode === 'ast-only' ? 'artifact-ast.json' : 'artifact.json');
+  writeFileSync(constructorArgsPath, JSON.stringify(spec.constructorArgs), 'utf8');
+
+  const command = buildSilvercCommandPlan(spec, {
+    ...(options.repoRoot ? { repoRoot: options.repoRoot } : {}),
+    constructorArgsPath,
+    outputPath,
+  });
+
+  try {
+    execFileSync(command.binary, command.args, { stdio: 'pipe' });
+    const artifact = JSON.parse(readFileSync(outputPath, 'utf8')) as TArtifact;
+    return { spec, command, artifact };
+  } finally {
+    if (!options.keepTempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
 }
 
 export function buildKcc20DeploymentBundle(

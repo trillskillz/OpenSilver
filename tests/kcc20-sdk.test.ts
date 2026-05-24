@@ -8,9 +8,12 @@ import {
   buildKcc20LifecyclePlan,
   buildKcc20LifecycleTransactionPlans,
   buildKcc20MintCompileBundle,
+  buildSilvercCommandPlan,
+  buildSilvercCompileSpec,
   getDefaultSilvercBinary,
   getKcc20ControllerPaths,
   listPatternsByPhase,
+  runSilvercCompileSpec,
 } from '../sdk/src/index.js';
 
 const template = {
@@ -251,5 +254,35 @@ describe('kcc20 sdk helpers', () => {
       'aa'.repeat(32),
       true,
     ]);
+  });
+
+  it('builds a silverc command plan and executes a real ast-only compile', () => {
+    const repoRoot = process.cwd();
+    const spec = buildSilvercCompileSpec(
+      'contracts/tokens/kcc20.sil',
+      ['00'.repeat(32), 0, 0x02, true, 2, 2],
+      { mode: 'ast-only' },
+    );
+
+    const plan = buildSilvercCommandPlan(spec, {
+      repoRoot,
+      constructorArgsPath: '/tmp/ctor.json',
+      outputPath: '/tmp/out.json',
+    });
+
+    expect(plan.binary).toContain('upstream/silverscript/target/debug/silverc');
+    expect(plan.args).toEqual([
+      '--constructor-args',
+      '/tmp/ctor.json',
+      '--ast-only',
+      `${repoRoot}/contracts/tokens/kcc20.sil`,
+      '--output',
+      '/tmp/out.json',
+    ]);
+
+    const result = runSilvercCompileSpec<Record<string, unknown>>(spec, { repoRoot });
+    const printed = JSON.stringify(result.artifact);
+    expect(printed).toContain('IDENTIFIER_COVENANT_ID');
+    expect(printed).toContain('checkAmounts');
   });
 });
