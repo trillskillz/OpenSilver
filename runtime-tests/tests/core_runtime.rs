@@ -18,7 +18,7 @@ use kaspa_txscript_errors::TxScriptError;
 use rand::thread_rng;
 use secp256k1::{Keypair, Message, Secp256k1, SecretKey};
 use silverscript_lang::ast::Expr;
-use silverscript_lang::compiler::{CompileOptions, CompiledContract, CovenantDeclCallOptions, compile_contract};
+use silverscript_lang::compiler::{CompileOptions, CompiledContract, CovenantDeclCallOptions, compile_contract, struct_object};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().expect("runtime-tests lives under repo root").to_path_buf()
@@ -2512,6 +2512,496 @@ fn dms_claim_rejects_before_timeout_age() {
     mutable.tx.inputs[0].signature_script = sigscript;
 
     let err = execute_plain_input(mutable.tx, utxo).expect_err("early dms claim must fail");
+    assert!(
+        matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse | TxScriptError::UnsatisfiedLockTime(_)),
+        "unexpected error: {err:?}"
+    );
+}
+
+// ─── Streaming.withdraw (singleton transition with termination_allowed) ────
+//
+// The policy is `#[covenant.singleton(mode = transition, termination = allowed)]`,
+// so the compiler emits a wrapper that:
+//   - takes State[] next_states as the sole runtime arg,
+//   - requires auth_out_count == next_states.length,
+//   - validateOutputState's each auth-bound output against next_states[i].
+//
+// The contract's require()'d constraints pin every field of the
+// continuation so the caller cannot forge it. Two shapes:
+//   - partial draw: next_states.length == 1, output 0 = payout to recipient
+//     at rate_per_claim, output 1 = P2SH continuation with cov binding.
+//   - terminal draw: next_states.length == 0, output 0 = payout to recipient
+//     at remaining_allowance, no continuation.
+
+fn streaming_state(
+    sender: &[u8],
+    recipient: &[u8],
+    rate: i64,
+    total: i64,
+    remaining: i64,
+    period: i64,
+    next_release_time: i64,
+) -> Expr<'static> {
+    struct_object(vec![
+        ("sender", sender.to_vec().into()),
+        ("recipient", recipient.to_vec().into()),
+        ("rate_per_claim", rate.into()),
+        ("total_allowance", total.into()),
+        ("remaining_allowance", remaining.into()),
+        ("period", period.into()),
+        ("next_release_time", next_release_time.into()),
+    ])
+}
+
+#[test]
+fn streaming_withdraw_accepts_partial_draw_with_continuation() {
+    let sender = random_keypair();
+    let recipient = random_keypair();
+    let sender_pk = sender.x_only_public_key().0.serialize().to_vec();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+
+    let rate = 500_i64;
+    let total = 5_000_i64;
+    let remaining_before = 3_000_i64; // > rate, so partial-draw branch
+    let remaining_after = remaining_before - rate;
+    let period = 10_i64;
+    let next_release_before = 100_i64;
+    let next_release_after = next_release_before + period;
+
+    let active_args: Vec<Expr<'static>> = vec![
+        sender_pk.clone().into(),
+        recipient_pk.clone().into(),
+        rate.into(),
+        total.into(),
+        remaining_before.into(),
+        period.into(),
+        next_release_before.into(),
+    ];
+    let next_args: Vec<Expr<'static>> = vec![
+        sender_pk.clone().into(),
+        recipient_pk.clone().into(),
+        rate.into(),
+        total.into(),
+        remaining_after.into(),
+        period.into(),
+        next_release_after.into(),
+    ];
+    let active = compile_contract_file("contracts/core/streaming-payment.sil", active_args);
+    let next = compile_contract_file("contracts/core/streaming-payment.sil", next_args);
+
+    // Output 0: payout to recipient = rate_per_claim sompi
+    // Output 1: continuation P2SH(next.script) with CovenantBinding
+    let input_value = 6_000u64;
+    let payout_value = rate as u64;
+    let cov_id = ownable_cov_id(0x10);
+    let payout = TransactionOutput {
+        value: payout_value,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(&recipient_pk).into()),
+        covenant: None,
+    };
+    let continuation = TransactionOutput {
+        value: input_value - payout_value - 1_000, // residual minus a token fee
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0x10; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    // tx.time >= next_release_before
+    let tx = Transaction::new(1, vec![input], vec![payout, continuation], next_release_before as u64, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let recipient_sig = schnorr_signature(&mutable, 0, &recipient);
+    let next_state = streaming_state(
+        &sender_pk,
+        &recipient_pk,
+        rate,
+        total,
+        remaining_after,
+        period,
+        next_release_after,
+    );
+    let next_states_arg: Expr<'static> = vec![next_state].into();
+    let sigscript = covenant_sigscript(
+        &active,
+        "withdraw",
+        vec![recipient_pk.clone().into(), recipient_sig.into(), next_states_arg],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "streaming withdraw partial-draw runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn streaming_withdraw_accepts_terminal_draw_no_continuation() {
+    let sender = random_keypair();
+    let recipient = random_keypair();
+    let sender_pk = sender.x_only_public_key().0.serialize().to_vec();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+
+    let rate = 500_i64;
+    let total = 5_000_i64;
+    let remaining = 300_i64; // <= rate, so terminal-draw branch
+    let period = 10_i64;
+    let next_release = 100_i64;
+
+    let active = compile_contract_file(
+        "contracts/core/streaming-payment.sil",
+        vec![
+            sender_pk.clone().into(),
+            recipient_pk.clone().into(),
+            rate.into(),
+            total.into(),
+            remaining.into(),
+            period.into(),
+            next_release.into(),
+        ],
+    );
+
+    let input_value = 1_000u64;
+    let payout_value = remaining as u64;
+    let cov_id = ownable_cov_id(0x11);
+    let payout = TransactionOutput {
+        value: payout_value,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(&recipient_pk).into()),
+        covenant: None,
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0x11; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![payout], next_release as u64, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let recipient_sig = schnorr_signature(&mutable, 0, &recipient);
+    let empty_states: Vec<Expr<'static>> = vec![];
+    let sigscript = covenant_sigscript(
+        &active,
+        "withdraw",
+        vec![recipient_pk.clone().into(), recipient_sig.into(), empty_states.into()],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "streaming withdraw terminal-draw runtime failed: {}", result.unwrap_err());
+
+    let _ = sender_pk;
+}
+
+#[test]
+fn streaming_withdraw_rejects_forged_continuation_remaining() {
+    // Same partial-draw shape, but the next state's remaining_allowance is
+    // forged (no decrement). The require() in the policy must reject it.
+    let sender = random_keypair();
+    let recipient = random_keypair();
+    let sender_pk = sender.x_only_public_key().0.serialize().to_vec();
+    let recipient_pk = recipient.x_only_public_key().0.serialize().to_vec();
+
+    let rate = 500_i64;
+    let total = 5_000_i64;
+    let remaining_before = 3_000_i64;
+    let remaining_forged = remaining_before; // attacker leaves it un-decremented
+    let period = 10_i64;
+    let next_release_before = 100_i64;
+    let next_release_after = next_release_before + period;
+
+    let active = compile_contract_file(
+        "contracts/core/streaming-payment.sil",
+        vec![
+            sender_pk.clone().into(),
+            recipient_pk.clone().into(),
+            rate.into(),
+            total.into(),
+            remaining_before.into(),
+            period.into(),
+            next_release_before.into(),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/streaming-payment.sil",
+        vec![
+            sender_pk.clone().into(),
+            recipient_pk.clone().into(),
+            rate.into(),
+            total.into(),
+            remaining_forged.into(),
+            period.into(),
+            next_release_after.into(),
+        ],
+    );
+
+    let input_value = 6_000u64;
+    let payout_value = rate as u64;
+    let cov_id = ownable_cov_id(0x12);
+    let payout = TransactionOutput {
+        value: payout_value,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(&recipient_pk).into()),
+        covenant: None,
+    };
+    let continuation = TransactionOutput {
+        value: input_value - payout_value - 1_000,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0x12; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![payout, continuation], next_release_before as u64, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let recipient_sig = schnorr_signature(&mutable, 0, &recipient);
+    // The arg presents the forged state to the policy; the policy's
+    // require(next_states[0].remaining_allowance == prev_state.remaining_allowance - rate)
+    // catches it.
+    let forged_state = streaming_state(
+        &sender_pk,
+        &recipient_pk,
+        rate,
+        total,
+        remaining_forged,
+        period,
+        next_release_after,
+    );
+    let next_states_arg: Expr<'static> = vec![forged_state].into();
+    let sigscript = covenant_sigscript(
+        &active,
+        "withdraw",
+        vec![recipient_pk.clone().into(), recipient_sig.into(), next_states_arg],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_covenant_input(mutable.tx, utxo).expect_err("forged remaining must fail");
+    assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+// ─── Vesting.claim (singleton transition with termination_allowed) ─────────
+
+fn vesting_state(
+    beneficiary: &[u8],
+    admin: &[u8],
+    total: i64,
+    claimed: i64,
+    cliff: i64,
+    period: i64,
+    per_period: i64,
+    revocable: bool,
+) -> Expr<'static> {
+    struct_object(vec![
+        ("beneficiary", beneficiary.to_vec().into()),
+        ("admin", admin.to_vec().into()),
+        ("total_allocation", total.into()),
+        ("claimed_amount", claimed.into()),
+        ("cliff_time", cliff.into()),
+        ("period", period.into()),
+        ("release_per_period", per_period.into()),
+        ("revocable", Expr::bool(revocable)),
+    ])
+}
+
+#[test]
+fn vesting_claim_accepts_partial_release_with_continuation() {
+    let beneficiary = random_keypair();
+    let admin = random_keypair();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize().to_vec();
+    let admin_pk = admin.x_only_public_key().0.serialize().to_vec();
+
+    let total = 10_000_i64;
+    let claimed_before = 2_000_i64;
+    let per_period = 1_000_i64;
+    let claimed_after = claimed_before + per_period;
+    let cliff_before = 100_i64;
+    let period = 50_i64;
+    let cliff_after = cliff_before + period;
+    let revocable = true;
+
+    let active = compile_contract_file(
+        "contracts/core/vesting.sil",
+        vec![
+            beneficiary_pk.clone().into(),
+            admin_pk.clone().into(),
+            total.into(),
+            claimed_before.into(),
+            cliff_before.into(),
+            period.into(),
+            per_period.into(),
+            Expr::bool(revocable),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/vesting.sil",
+        vec![
+            beneficiary_pk.clone().into(),
+            admin_pk.clone().into(),
+            total.into(),
+            claimed_after.into(),
+            cliff_after.into(),
+            period.into(),
+            per_period.into(),
+            Expr::bool(revocable),
+        ],
+    );
+
+    let input_value = 10_000u64;
+    let payout_value = per_period as u64;
+    let cov_id = ownable_cov_id(0x13);
+    let payout = TransactionOutput {
+        value: payout_value,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(&beneficiary_pk).into()),
+        covenant: None,
+    };
+    let continuation = TransactionOutput {
+        value: input_value - payout_value - 1_000,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0x13; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![payout, continuation], cliff_before as u64, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let beneficiary_sig = schnorr_signature(&mutable, 0, &beneficiary);
+    let next_state = vesting_state(
+        &beneficiary_pk,
+        &admin_pk,
+        total,
+        claimed_after,
+        cliff_after,
+        period,
+        per_period,
+        revocable,
+    );
+    let next_states_arg: Expr<'static> = vec![next_state].into();
+    let sigscript = covenant_sigscript(
+        &active,
+        "claim",
+        vec![beneficiary_pk.clone().into(), beneficiary_sig.into(), next_states_arg],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_covenant_input(mutable.tx, utxo);
+    assert!(result.is_ok(), "vesting claim partial-release runtime failed: {}", result.unwrap_err());
+}
+
+#[test]
+fn vesting_claim_rejects_pre_cliff() {
+    // Same partial-release setup but tx.time < cliff_time.
+    let beneficiary = random_keypair();
+    let admin = random_keypair();
+    let beneficiary_pk = beneficiary.x_only_public_key().0.serialize().to_vec();
+    let admin_pk = admin.x_only_public_key().0.serialize().to_vec();
+
+    let total = 10_000_i64;
+    let claimed_before = 2_000_i64;
+    let per_period = 1_000_i64;
+    let claimed_after = claimed_before + per_period;
+    let cliff_before = 500_i64;
+    let period = 50_i64;
+    let cliff_after = cliff_before + period;
+    let revocable = true;
+
+    let active = compile_contract_file(
+        "contracts/core/vesting.sil",
+        vec![
+            beneficiary_pk.clone().into(),
+            admin_pk.clone().into(),
+            total.into(),
+            claimed_before.into(),
+            cliff_before.into(),
+            period.into(),
+            per_period.into(),
+            Expr::bool(revocable),
+        ],
+    );
+    let next = compile_contract_file(
+        "contracts/core/vesting.sil",
+        vec![
+            beneficiary_pk.clone().into(),
+            admin_pk.clone().into(),
+            total.into(),
+            claimed_after.into(),
+            cliff_after.into(),
+            period.into(),
+            per_period.into(),
+            Expr::bool(revocable),
+        ],
+    );
+
+    let input_value = 10_000u64;
+    let payout_value = per_period as u64;
+    let cov_id = ownable_cov_id(0x14);
+    let payout = TransactionOutput {
+        value: payout_value,
+        script_public_key: ScriptPublicKey::new(0, build_p2pk_script(&beneficiary_pk).into()),
+        covenant: None,
+    };
+    let continuation = TransactionOutput {
+        value: input_value - payout_value - 1_000,
+        script_public_key: pay_to_script_hash_script(&next.script),
+        covenant: Some(CovenantBinding { authorizing_input: 0, covenant_id: cov_id }),
+    };
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([0x14; 32]),
+            index: 0,
+        },
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    // tx.time = 100 < cliff_time = 500
+    let tx = Transaction::new(1, vec![input], vec![payout, continuation], 100, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(input_value, pay_to_script_hash_script(&active.script), 0, false, Some(cov_id));
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let beneficiary_sig = schnorr_signature(&mutable, 0, &beneficiary);
+    let next_state = vesting_state(
+        &beneficiary_pk,
+        &admin_pk,
+        total,
+        claimed_after,
+        cliff_after,
+        period,
+        per_period,
+        revocable,
+    );
+    let next_states_arg: Expr<'static> = vec![next_state].into();
+    let sigscript = covenant_sigscript(
+        &active,
+        "claim",
+        vec![beneficiary_pk.clone().into(), beneficiary_sig.into(), next_states_arg],
+    );
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_covenant_input(mutable.tx, utxo).expect_err("pre-cliff claim must fail");
     assert!(
         matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse | TxScriptError::UnsatisfiedLockTime(_)),
         "unexpected error: {err:?}"
