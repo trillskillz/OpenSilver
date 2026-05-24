@@ -10,7 +10,7 @@ DOCS_PAGES: 11 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro)
-TESTS_PASSING: 466/466 upstream + 18/18 vitest compile suite + 46/46 cargo runtime suite (0 ignored)
+TESTS_PASSING: 466/466 upstream + 18/18 vitest compile suite + 48/48 cargo runtime suite (0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3
 NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then start Phase 4 KCC20 wrap)
@@ -93,6 +93,16 @@ NEXT_PHASE: 3 (extend runtime coverage to the remaining stateful patterns, then 
 
 All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
 
+## Phase 4 runtime coverage (started 2026-05-23)
+
+- Added `runtime-tests/tests/kcc20_runtime.rs` plus shared `runtime-tests/tests/common.rs` helpers so controller + asset lifecycle tests can live outside the monolithic core file.
+- **KCC20Capped** now has end-to-end runtime coverage for:
+  - controller init / asset binding handoff
+  - happy-path capped mint
+  - over-cap mint rejection
+- This lifts the runtime suite from **46 → 48** passing tests and proves the basic controller+asset lifecycle shape for the 4.x family.
+- Next runtime targets: `KCC20Pausable` (pause/unpause + paused-mint reject), `KCC20Ownable` (admin handoff + mint during pending transfer), and `KCC20Vesting` (schedule-gated mint + pre-cliff reject).
+
 ## Phase 4 — KCC20 token patterns (current)
 
 | Slot | Pattern | Asset | Controller | Status |
@@ -100,7 +110,7 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
 | 4.1 | KCC20 reference | `contracts/tokens/kcc20.sil` | (pluggable) | Scaffolded; vitest-compiled |
 | 4.2 | KCC20Ownable | (4.1 reused) | `contracts/tokens/kcc20-ownable.sil` | Scaffolded; vitest-compiled |
 | 4.3 | KCC20Pausable | (4.1 reused) | `contracts/tokens/kcc20-pausable.sil` | Scaffolded; vitest-compiled |
-| 4.4 | KCC20Capped | (4.1 reused) | `contracts/tokens/kcc20-capped.sil` | Scaffolded; vitest-compiled |
+| 4.4 | KCC20Capped | (4.1 reused) | `contracts/tokens/kcc20-capped.sil` | Scaffolded; vitest-compiled; runtime init/mint covered |
 | 4.5 | KCC20Vesting | (4.1 reused) | `contracts/tokens/kcc20-vesting.sil` | Scaffolded; vitest-compiled |
 | 4.6 | KCC20Snapshot | (touches asset) | n/a | Stub doc; deferred to KIP-21 lane stability |
 
