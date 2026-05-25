@@ -12,7 +12,19 @@ shapes) with copy-pasteable commands.
   every other pattern follows. Read this first; the other 21 patterns
   swap pattern ids but keep the same shape.
 
-## Other patterns
+## Token patterns (Phase 4 — KCC20 family)
+
+The KCC20 family lives under [`examples/tokens/`](./tokens/README.md).
+Token deploys are **three-phase** (controller genesis → asset genesis +
+controller init → operations), which differs meaningfully from the
+one-shot deploy shape used by core patterns; the tokens README
+explains the lifecycle and points at the SDK helpers that compute the
+template-binding ctor args. Five walkthroughs are paste-ready: the
+KCC20 asset reference (4.1), KCC20Ownable (4.2), KCC20Pausable (4.3),
+KCC20Capped (4.4), and KCC20Vesting (4.5). KCC20Snapshot (4.6) waits
+on upstream KIP-21 lane stability.
+
+## Other core patterns
 
 The remaining directories hold per-pattern lifecycle stubs. They share
 the same flow as the Ownable example — the difference is which
