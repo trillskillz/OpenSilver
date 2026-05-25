@@ -2,44 +2,56 @@
 
 Autonomous work picked up by the next agent run. Coordination continues, but implementation can proceed. This queue now tracks the remaining recon work plus active Phase 2 scaffolding.
 
-## Current state (2026-05-25)
+## Current state (2026-05-25 — autonomous engineering surface complete)
 
 Latest commits on `master` (most recent first):
 
-- `73e1736` ZK examples — 5/5 walkthroughs paste-ready under `examples/zk/`
-- `f9883e2` KCC20 examples — 5/5 walkthroughs paste-ready under `examples/tokens/`
-- `0ac8e95` Final 6 core walkthroughs (Streaming, Vesting, DMS, SocialRecovery, MilestoneEscrow, FreelancePayroll)
-- `d770d6d` 5 more core walkthroughs (MultiSig, Vault, TimeLock, BilateralEscrow, AtomicSwap)
+- `dfb27b2` 5.3 v2 runtime tests — cross-contract binding verified end-to-end
+- `ad2876e` 5.3 v2 contracts + audit + docs (compile-validated landing)
+- `b2eecfd` Pattern selection guide + NEXT_SESSION refresh
+- `73e1736` ZK examples (5/5 walkthroughs)
+- `f9883e2` KCC20 examples (5/5 walkthroughs)
+- `0ac8e95` Final 6 core walkthroughs
+- `d770d6d` 5 more core walkthroughs
 - `6e3c4e0` STATUS refresh
 - `dfe4fa5` Ownable canonical walkthrough + examples index
 - `8ad1b4e` CI wizard:check drift gate
 - `dde94bc` Phase 8.3 Web Wizard
 
-**Examples-tree coverage is now complete**: 12/12 core + 5/5 KCC20 controllers + 4/4 ZK patterns. Every implemented pattern has a paste-ready walkthrough.
+**Examples-tree coverage is complete**: 12/12 core + 5/5 KCC20 controllers + 4/4 ZK + 5.3 v2 + companion consumer. Every implemented pattern has a paste-ready walkthrough.
 
-**Total docs surface (read-this-first paths)**:
+**Pattern 5.3 v2 cross-contract output binding is LIVE** — the last substantial autonomous engineering item is done. First non-KCC20 use of `validateOutputStateWithTemplate` in OpenSilver, runtime-verified end-to-end through `kaspa-txscript`.
+
+**Read-this-first docs surface**:
 - `README.md` — repo map + quick start
-- `docs/PATTERNS.md` — use-case-indexed pattern selection guide (new, 2026-05-25)
+- `docs/PATTERNS.md` — use-case-indexed pattern selection guide
 - `docs/DEPLOY_GUIDE.md` — full deployment walkthrough
-- `AUDIT_CHECKLIST.md` — per-pattern audit posture
-- `examples/README.md` + 21 per-pattern walkthroughs — paste-ready lifecycles
+- `AUDIT_CHECKLIST.md` — per-pattern audit posture (incl. 5.3 v2)
+- `examples/README.md` + 23 per-pattern walkthroughs — paste-ready lifecycles
 - `wizard/build/index.html` — static HTML pattern browser (`npm run wizard:build`)
 
-**Tests**: 35/35 vitest files (159/159 tests) + 70/70 cargo runtime (51 core + 7 kcc20 + 12 zk, 0 ignored). CI drift gates: `manifests:check`, `wizard:check`.
+**Tests**: 36/36 vitest files (167/167 tests) + 73/73 cargo runtime (51 core + 7 kcc20 + 15 zk, 0 ignored). CI drift gates: `manifests:check`, `wizard:check`.
 
-## Remaining autonomous queue (in priority order)
+## Remaining work (all user-gated or external-author scope)
 
-1. **5.3 v2 cross-contract output binding** — substantial. Modify the oracle to pin a continuation output via `validateOutputStateWithTemplate`, build a minimal consumer covenant that reads the published value via `readInputStateWithTemplate`, and add a runtime test exercising the oracle→consumer chain. Pattern is well-established in the KCC20 controllers; this would be the first non-KCC20 use of it. ~2-3 hours of focused work for design + impl + test.
-2. **Examples for sub-stub patterns** — DONE in this arc. 21/21 implemented patterns have walkthroughs.
-3. **STATUS.md / NEXT_SESSION.md hygiene** — keep these in lockstep with reality as future commits land.
+- **External audit engagement (Phase 10.2).** Engage a SilverScript-capable audit firm. Outreach drafts in `ECOSYSTEM_COORDINATION.md`.
+- **Bug bounty pool funding (Phase 10.3).**
+- **Toccata-activation-day launch coordination (Phase 11).**
+- **Upstream PR `kaspanet/silverscript#125` stack-order fold-back.** Local patch lane carries the `.rev()` correction; needs upstream review/merge before mainnet.
+- **KCC20Snapshot (4.6).** Waits on upstream KIP-21 `OpChainblockSeqCommit` lane stability.
+- **Real circuits for Pattern 5.2 + 5.4.** Covenant halves are runtime-verified against the placeholder Groth16 fixture. Real deployments need per-pattern circuits — CIRCUIT-AUTHOR deliverable, not OpenSilver scope.
+- **Outreach.** Sutton + Newman + Manyfest + IzioDev + Kaspero Labs + KaspaCom drafts in `ECOSYSTEM_COORDINATION.md`. Helpful but not gating.
 
-## Blocked / user-gated
+## Optional next autonomous slices (if extension wanted)
 
-- **KCC20Snapshot (4.6)** — waits on upstream KIP-21 lane stability.
-- **Upstream PR `kaspanet/silverscript#125` stack-order fold-back** — user-gated; needs the patch's `.rev()` correction merged before the PR can land cleanly.
-- **External audit (Phase 10.2)** — user-gated.
-- **Bug bounty (Phase 10.3)** — user-gated.
-- **Real circuits for 5.2 / 5.4** — circuit-author deliverable; not OpenSilver scope.
+The catalogue is mainnet-shape complete; these are scope extensions, not gaps:
+
+- **Combined KCC20 controller (4.7+).** Capped + Pausable + Ownable in one controller. Forks the existing four; uses the same template-binding shape.
+- **5.2 v2 with nullifier accumulator.** Stateful continuation that tracks spent nullifiers via singleton transition. Needs the proof to bind `new_root = insert(old_root, nullifier)` — assumes a real circuit lands first.
+- **5.3 v3 multi-output binding.** Pin N consumer outputs in one publish. Mechanical extension of v2.
+- **5.4 v2 per-recipient public-input decoding.** Pulls `(recipient_i, amount_i)` pairs from public-input slices. Assumes a real per-recipient circuit.
+- **Docs site build.** Surface the pattern catalogue + examples + selection guide as a unified Docusaurus site (scaffold already seeded at `docs/site/`).
+- **MCP tooling depth.** Additional audit heuristics, pattern-specific lint rules, more `audit_covenant` finding codes.
 
 ---
 

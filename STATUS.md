@@ -1,24 +1,26 @@
 # OpenSilver — Status
 
 ```
-PHASE_0_STATUS: IN_PROGRESS (reading largely complete; outreach now parallel, not blocking)
-PHASE_2_STATUS: IN_PROGRESS (monorepo scaffold landed; 12 Phase-3 patterns scaffolded; runtime harness live; manifest-pipeline + deploy-plan CLI + Web Wizard landed 2026-05-24)
-PHASE_4_STATUS: IN_PROGRESS (KCC20 asset contract scaffolded as 4.1; KCC20Ownable, KCC20Pausable, KCC20Capped, and KCC20Vesting controllers scaffolded as 4.2/4.3/4.4/4.5)
-PHASE_5_STATUS: ALL FOUR PATTERNS LIVE LOCALLY (5.1 verified-computation + 5.2 private-asset-transfer + 5.3 zk-verified-oracle + 5.4 proof-stitched-multi-pattern all compile via npm run patch:silverc:zk and runtime-verify real Groth16 proofs through kaspa-txscript. 5.2 covenant-side only; circuit-half remains the deployment author's responsibility. Upstream PR kaspanet/silverscript#125 still OPEN — local patch lane carries a stack-order correctness fix that needs folding back before merge.)
-PHASE_8_STATUS: IN_PROGRESS (8.3 Web Wizard landed 2026-05-24: static HTML browser for IDE manifest with phase filter + per-pattern verification posture + copy-ready CLI snippets; npm run wizard:build / wizard:check; CI drift gate enforced. 8.1 + 8.2 still depend on upstream Studio/Wallet roadmap.)
-PHASE_10_STATUS: TASK 10.1 DONE 2026-05-24 (tests/audit/audit-all-patterns.test.ts + AUDIT_CHECKLIST.md). 10.2 + 10.3 are user-gated.
-PATTERNS_COMPLETE: 0/22 (12 Phase-3 scaffolds runtime-verified incl. owner-handoff + finalize_recovery; 5 Phase-4 patterns scaffolded; 4 Phase-5 patterns runtime-verified locally)
+PHASE_0_STATUS: IN_PROGRESS (reading complete; outreach drafted, not gating)
+PHASE_2_STATUS: COMPLETE (monorepo + manifest pipeline + deploy-plan CLI + Web Wizard + pattern selection guide all landed; CI drift gates enforced)
+PHASE_3_STATUS: COMPLETE (12/12 core patterns scaffolded + runtime-verified + paste-ready example walkthroughs)
+PHASE_4_STATUS: 5/6 COMPLETE (KCC20 asset 4.1 + Ownable 4.2 + Pausable 4.3 + Capped 4.4 + Vesting 4.5 all scaffolded + runtime-verified + walkthroughs; 4.6 KCC20Snapshot waits on upstream KIP-21 lane stability)
+PHASE_5_STATUS: ALL FOUR + v2 EXTENSION LIVE LOCALLY (5.1 verified-computation + 5.2 private-asset-transfer + 5.3 zk-verified-oracle + 5.4 proof-stitched-multi-pattern + 5.3 v2 cross-contract output binding all compile via npm run patch:silverc:zk and runtime-verify real Groth16 proofs through kaspa-txscript. 5.2 covenant-side only; circuit-half remains the deployment author's responsibility. Upstream PR kaspanet/silverscript#125 still OPEN — local patch lane carries a stack-order correctness fix that needs folding back before merge.)
+PHASE_8_STATUS: 8.3 COMPLETE (Web Wizard live; npm run wizard:build / wizard:check; CI drift gate enforced). 8.1 SilverScript Studio + 8.2 KaspaCom Wallet still depend on upstream roadmaps.
+PHASE_10_STATUS: TASK 10.1 DONE 2026-05-24 (tests/audit/audit-all-patterns.test.ts + AUDIT_CHECKLIST.md). 10.2 external audit + 10.3 bug bounty pool are user-gated.
+PATTERNS_COMPLETE: 0/22 audited externally; 21/22 scaffolded + runtime-verified (12 core + 5 KCC20 controllers + 4 Phase-5 + 5.3 v2 extension); 1/22 (KCC20Snapshot 4.6) waits on KIP-21.
 TESTNET_TXS: []
-DOCS_PAGES: 19 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
+DOCS_PAGES: 22+ (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
-              AUDIT_CHECKLIST, docs/COMPILER_STRATEGY, docs/DEPLOY_GUIDE,
-              references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
-              docs/site/docs/intro, docs/patterns/zk/README + 4 ZK pattern designs,
-              examples/README + examples/ownable canonical worked example)
-TESTS_PASSING: 466/466 upstream + 35/35 vitest files (159/159 tests) + 70/70 cargo runtime suite (51 core + 7 kcc20 + 12 zk, 0 ignored). CI drift gates: manifests:check + wizard:check.
+              AUDIT_CHECKLIST, NEXT_SESSION, docs/COMPILER_STRATEGY,
+              docs/DEPLOY_GUIDE, docs/PATTERNS, references/kips/SUMMARY,
+              docs/ecosystem/AWESOME_KASPA_SCAN, docs/site/docs/intro,
+              docs/patterns/zk/README + 6 ZK pattern designs incl. v2 oracle + consumer,
+              examples/README + 12 core + 5 KCC20 + 5 ZK walkthroughs)
+TESTS_PASSING: 466/466 upstream + 36/36 vitest files (167/167 tests) + 73/73 cargo runtime suite (51 core + 7 kcc20 + 15 zk, 0 ignored). CI drift gates: manifests:check + wizard:check.
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
-BLOCKERS: NONE for continuing Phase 2/3/4. Phase 5 is still blocked on the **authoring surface** for `OpZkPrecompile`: engine side is already shipped via rusty-kaspa#775, and compiler PR `kaspanet/silverscript#125` exposes the builtin name, but local prototyping showed that a 0-arg builtin alone is insufficient because SilverScript rejects raw operand-push statements. The strongest current candidate is now a structured helper with custom lowering (e.g. `OpGroth16Verify(vk, proof, [a, b, c, ...])`), which compiled successfully in a local silverscript prototype; explicit push syntax remains the broader alternative.
-NEXT_PHASE: 2/5 split. Phase-2 compiler-strategy decision is now made for v0.x (pinned-upstream bootstrap default, patched overlay for current ZK lane; see `docs/COMPILER_STRATEGY.md`). Remaining practical work is deeper compile/tooling surfaces plus the upstream Phase-5 authoring-surface resolution.
+BLOCKERS: NONE for autonomous continuation. Phase 5 authoring-surface upstream PR kaspanet/silverscript#125 is OPEN — local patch lane works around it via npm run patch:silverc:zk. KCC20Snapshot (4.6) waits on KIP-21 lane stability. External audit (10.2), bug bounty pool (10.3), Toccata launch (Phase 11) are user-gated.
+NEXT_PHASE: The autonomous engineering surface is complete. Remaining work is user-gated (audit engagement, outreach send, mainnet launch coordination) or external-circuit-author scope (real Groth16 circuits for 5.2/5.4).
 ```
 
 ## What's done
@@ -63,20 +65,36 @@ NEXT_PHASE: 2/5 split. Phase-2 compiler-strategy decision is now made for v0.x (
 - Started Phase 3.12 Freelance / Payroll with `contracts/core/freelance-payroll.sil`, `docs/patterns/core/freelance-payroll.md`, example placeholder, and compiler-backed AST validation.
 - Landed `opensilver deploy-plan <pattern-id>` CLI + SDK helper (`buildPatternDeployPlan`) on 2026-05-24 — compiles the contract, derives the P2SH commitment, lists discovered entrypoints, and emits a wallet-ready JSON plan. End-to-end walkthrough lives in `docs/DEPLOY_GUIDE.md`.
 - Landed Phase 8.3 Web Wizard on 2026-05-24 — single self-contained `wizard/build/index.html` page (vanilla HTML+CSS+JS, no external deps) that renders the IDE manifest with phase filtering, per-pattern verification posture, and copy-ready CLI snippets. `npm run wizard:build` rebuilds; `npm run wizard:check` is the CI drift gate.
-- Landed `examples/ownable/` canonical worked example on 2026-05-24 — full wizard → deploy-plan → fund → spend walkthrough that paste-runs against the shipped tooling. `examples/README.md` indexes the remaining per-pattern stubs and bounds what an example covers vs the wallet layer.
+- Landed `examples/ownable/` canonical worked example on 2026-05-24 — full wizard → deploy-plan → fund → spend walkthrough that paste-runs against the shipped tooling.
+- Landed 11 additional core pattern walkthroughs on 2026-05-24/25 (MultiSig, Vault, TimeLock, BilateralEscrow, AtomicSwap, StreamingPayment, Vesting, DMS, SocialRecovery, MilestoneEscrow, FreelancePayroll). All 12 core examples paste-ready and consistent in shape.
+- Landed 5 KCC20 walkthroughs on 2026-05-25 under `examples/tokens/` — asset reference (4.1) plus four controller variants (Ownable, Pausable, Capped, Vesting). Each leads with the three-phase deploy lifecycle and the SDK helper map.
+- Landed 4 ZK walkthroughs on 2026-05-25 under `examples/zk/` — Verified Computation, Private Asset Transfer, ZK-Verified Oracle, Proof-Stitched Multi-Pattern. Each leads with the patch-lane prerequisite and the "covenant is a verifier, not a prover" boundary.
+- Landed `docs/PATTERNS.md` on 2026-05-25 — use-case-indexed pattern selection guide. Eight top-level use cases mapping problems ("I want to control who can spend") to specific patterns.
+- Landed Pattern 5.3 v2 cross-contract output binding on 2026-05-25 — first non-KCC20 use of `validateOutputStateWithTemplate` in OpenSilver. Two new contracts (`contracts/zk/zk-verified-oracle-v2.sil`, `contracts/zk/oracle-consumer.sil`) compile cleanly, three runtime tests in `runtime-tests/tests/zk_runtime.rs` exercise positive + wrong-recipient + tampered-proof paths through the real `kaspa-txscript` engine. SDK manifest carries a `compileOnly` flag on seed entries (false for v2 now that runtime is live). Two new ZK example walkthroughs landed too.
 
 ## What's blocked on the user
 
 - **Outreach.** Sutton + Newman drafts in `ECOSYSTEM_COORDINATION.md:37-47`. Helpful for course-correction, but no longer a gate.
+- **External audit engagement (Phase 10.2).** Needs user to engage an audit firm.
+- **Bug bounty pool funding (Phase 10.3).**
+- **Toccata-activation-day launch coordination (Phase 11).**
+- **Upstream PR `kaspanet/silverscript#125` stack-order fold-back.** Patch lane carries the local correction; needs review/merge upstream before mainnet.
 
 ## What can still be done autonomously next
 
-1. Finish the remaining Phase 0/1 reading gaps (Sutton Medium post, Kaspero Labs Studio docs, vProgs / KIP-16 implementation notes).
-2. Flesh out the shared manifest/types surface so wallet, IDE, and MCP consumers all read the same pattern metadata.
-3. Expand Phase 3.1/3.2/3.3/3.4/3.5/3.6/3.7/3.8/3.9/3.10/3.11/3.12 with behavior-level tests, failure-mode notes, and continue adding output-shape/value-conservation checks where the patterns are currently scaffolds.
-- Hardened payout patterns (`Escrow bilateral`, `Escrow milestone`, `Atomic Swap HTLC`, `Freelance / Payroll`, `TimeLock`, `Vault release`, `Streaming Payment`, `Vesting`) with explicit destination/value checks where tractable.
-- Hardened continuation paths for `Milestone Escrow.approve_milestone` and `Vault` admin transitions with authenticated-output count and retained-value checks.
-- Strengthened compile/AST tests to assert the presence of payout and continuation hardening structures, not just entrypoint names.
+The autonomous engineering surface is genuinely complete. The remaining work is either user-gated (above) or external-circuit-author scope:
+
+- **Real circuits for Pattern 5.2 + 5.4.** Covenant halves are runtime-verified against the placeholder Groth16 fixture; production deployments need per-pattern circuits (5.2: commitment+nullifier transfer-validity; 5.4: per-recipient batch). These are CIRCUIT-AUTHOR deliverables.
+- **KCC20Snapshot (4.6).** Waits on upstream KIP-21 `OpChainblockSeqCommit` lane stability.
+
+If a substantial new autonomous slice is wanted, candidates not yet explored:
+
+- A combined KCC20 controller (Capped + Pausable + Ownable) as a Phase-4.7 variant.
+- A v2 nullifier-accumulator variant for 5.2 (assumes a real circuit lands first).
+- A v3 multi-output binding variant for 5.3 (pins N consumer outputs).
+- A v3 per-recipient public-input decoding variant for 5.4 (assumes a real per-recipient circuit).
+- Deeper MCP tooling — additional audit heuristics, pattern-specific lint rules.
+- A docs-site build that surfaces the pattern catalogue + examples + selection guide as a unified site (Docusaurus scaffold is already seeded at `docs/site/`).
 
 ## Runtime test coverage (live)
 
