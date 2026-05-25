@@ -26,5 +26,7 @@ jobs:
         run: npm run typecheck
       - name: Check generated manifest artifacts
         run: npm run manifests:check
+      - name: Check wizard build artifact
+        run: npm run wizard:check
       - name: Test
         run: npm test
