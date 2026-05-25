@@ -37,6 +37,7 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 | `docs/ecosystem/AWESOME_KASPA_SCAN.md` | Covenant-relevant scan of the broader Kaspa ecosystem from `awesome-kaspa`, with likely downstream integration targets. |
 | `docs/COMPILER_STRATEGY.md` | The chosen long-term `silverc` strategy for v0.x: pinned-upstream bootstrap by default, patched overlay for the current ZK lane. |
 | `docs/DEPLOY_GUIDE.md` | End-to-end deployment guide: bootstrap → pick pattern → build deploy plan → derive P2SH address → fund → spend. Walks through the four real CLI tools and includes a known-issues table. |
+| `docs/PATTERNS.md` | Use-case-indexed pattern selection guide. Decision tree mapping problems ("I want to lock funds with multisig release", "I want a privacy-preserving payment") to specific patterns. Read this when you know what to build but not which pattern to reach for. |
 | `AUDIT_CHECKLIST.md` | Phase 10 Task 10.1 internal audit posture per pattern. Companion to `tests/audit/audit-all-patterns.test.ts`. |
 | `contracts/` | SilverScript contract source tree scaffold for core, token, and later zk-aware patterns. |
 | `sdk/`, `cli/`, `mcp/`, `wizard/`, `integrations/` | Phase 2 TypeScript workspace scaffold for shared manifest/types, tooling, and integration surfaces. |

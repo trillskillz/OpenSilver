@@ -2,6 +2,49 @@
 
 Autonomous work picked up by the next agent run. Coordination continues, but implementation can proceed. This queue now tracks the remaining recon work plus active Phase 2 scaffolding.
 
+## Current state (2026-05-25)
+
+Latest commits on `master` (most recent first):
+
+- `73e1736` ZK examples — 5/5 walkthroughs paste-ready under `examples/zk/`
+- `f9883e2` KCC20 examples — 5/5 walkthroughs paste-ready under `examples/tokens/`
+- `0ac8e95` Final 6 core walkthroughs (Streaming, Vesting, DMS, SocialRecovery, MilestoneEscrow, FreelancePayroll)
+- `d770d6d` 5 more core walkthroughs (MultiSig, Vault, TimeLock, BilateralEscrow, AtomicSwap)
+- `6e3c4e0` STATUS refresh
+- `dfe4fa5` Ownable canonical walkthrough + examples index
+- `8ad1b4e` CI wizard:check drift gate
+- `dde94bc` Phase 8.3 Web Wizard
+
+**Examples-tree coverage is now complete**: 12/12 core + 5/5 KCC20 controllers + 4/4 ZK patterns. Every implemented pattern has a paste-ready walkthrough.
+
+**Total docs surface (read-this-first paths)**:
+- `README.md` — repo map + quick start
+- `docs/PATTERNS.md` — use-case-indexed pattern selection guide (new, 2026-05-25)
+- `docs/DEPLOY_GUIDE.md` — full deployment walkthrough
+- `AUDIT_CHECKLIST.md` — per-pattern audit posture
+- `examples/README.md` + 21 per-pattern walkthroughs — paste-ready lifecycles
+- `wizard/build/index.html` — static HTML pattern browser (`npm run wizard:build`)
+
+**Tests**: 35/35 vitest files (159/159 tests) + 70/70 cargo runtime (51 core + 7 kcc20 + 12 zk, 0 ignored). CI drift gates: `manifests:check`, `wizard:check`.
+
+## Remaining autonomous queue (in priority order)
+
+1. **5.3 v2 cross-contract output binding** — substantial. Modify the oracle to pin a continuation output via `validateOutputStateWithTemplate`, build a minimal consumer covenant that reads the published value via `readInputStateWithTemplate`, and add a runtime test exercising the oracle→consumer chain. Pattern is well-established in the KCC20 controllers; this would be the first non-KCC20 use of it. ~2-3 hours of focused work for design + impl + test.
+2. **Examples for sub-stub patterns** — DONE in this arc. 21/21 implemented patterns have walkthroughs.
+3. **STATUS.md / NEXT_SESSION.md hygiene** — keep these in lockstep with reality as future commits land.
+
+## Blocked / user-gated
+
+- **KCC20Snapshot (4.6)** — waits on upstream KIP-21 lane stability.
+- **Upstream PR `kaspanet/silverscript#125` stack-order fold-back** — user-gated; needs the patch's `.rev()` correction merged before the PR can land cleanly.
+- **External audit (Phase 10.2)** — user-gated.
+- **Bug bounty (Phase 10.3)** — user-gated.
+- **Real circuits for 5.2 / 5.4** — circuit-author deliverable; not OpenSilver scope.
+
+---
+
+## Historical queue (pre-2026-05-25)
+
 ## Queue (in order)
 
 ### Audit/tooling follow-through ✅ DONE 2026-05-24
