@@ -29,8 +29,8 @@ Keepalive and fallback updates are modeled as singleton state transitions, makin
 
 ## Parameters
 
-- `init_owner`: owner identifier stored as `blake2b(pubkey)`.
-- `init_fallback`: fallback identifier stored as `blake2b(pubkey)`.
+- `init_owner`: owner pubkey stored directly in state.
+- `init_fallback`: fallback pubkey stored directly in state.
 - `init_timeout_age`: inactivity threshold expressed against `this.age`.
 - `init_last_ping_age`: tracked metadata for the last keepalive state.
 
@@ -44,10 +44,11 @@ Benchmarking not yet recorded.
 
 ## Audit status
 
-Not audited. Compiler-validated scaffold only.
+Not externally audited. Internal audit posture is now clean of the earlier byte[32]-state-write compiler hazard: this pattern uses direct `pubkey` state instead of hashed `byte[32]` owner/fallback slots, matching the safer workaround already used in Ownable v1 / SocialRecovery.
 
 ## WHEN NOT TO USE THIS
 
 - Do not use this when recovery should require multiple guardians or a quorum.
 - Do not use this when claim conditions depend on off-chain attestations or milestone proof.
+- Do not use this if hidden owner/fallback commitments matter more than compiler compatibility; this v1 keeps pubkeys explicit in state.
 - Do not treat this scaffold as production-ready until it has output constraints, clearer timer semantics, and testnet exercise.

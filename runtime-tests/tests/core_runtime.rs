@@ -1996,20 +1996,6 @@ fn dms_ping_accepts_owner_with_new_ping_age() {
     let fallback = random_keypair();
     let owner_pk = owner.x_only_public_key().0.serialize();
     let fallback_pk = fallback.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let fallback_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&fallback_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
     let timeout_age = 100_i64;
     let prev_ping = 10_i64;
     let next_ping = 42_i64;
@@ -2017,8 +2003,8 @@ fn dms_ping_accepts_owner_with_new_ping_age() {
     let active = compile_contract_file(
         "contracts/core/dead-man-switch.sil",
         vec![
-            owner_hash.clone().into(),
-            fallback_hash.clone().into(),
+            owner_pk.to_vec().into(),
+            fallback_pk.to_vec().into(),
             timeout_age.into(),
             prev_ping.into(),
         ],
@@ -2026,8 +2012,8 @@ fn dms_ping_accepts_owner_with_new_ping_age() {
     let next = compile_contract_file(
         "contracts/core/dead-man-switch.sil",
         vec![
-            owner_hash.into(),
-            fallback_hash.into(),
+            owner_pk.to_vec().into(),
+            fallback_pk.to_vec().into(),
             timeout_age.into(),
             next_ping.into(),
         ],
@@ -2068,25 +2054,11 @@ fn dms_ping_accepts_owner_with_new_ping_age() {
 #[test]
 fn dms_ping_rejects_fallback_signature() {
     // Only the owner can ping. Fallback's signature must fail the
-    // require(blake2b(owner_pk) == owner) check.
+    // require(owner_pk == owner) check.
     let owner = random_keypair();
     let fallback = random_keypair();
     let owner_pk = owner.x_only_public_key().0.serialize();
     let fallback_pk = fallback.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let fallback_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&fallback_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
     let timeout_age = 100_i64;
     let prev_ping = 10_i64;
     let next_ping = 42_i64;
@@ -2094,8 +2066,8 @@ fn dms_ping_rejects_fallback_signature() {
     let active = compile_contract_file(
         "contracts/core/dead-man-switch.sil",
         vec![
-            owner_hash.clone().into(),
-            fallback_hash.clone().into(),
+            owner_pk.to_vec().into(),
+            fallback_pk.to_vec().into(),
             timeout_age.into(),
             prev_ping.into(),
         ],
@@ -2103,8 +2075,8 @@ fn dms_ping_rejects_fallback_signature() {
     let next = compile_contract_file(
         "contracts/core/dead-man-switch.sil",
         vec![
-            owner_hash.into(),
-            fallback_hash.into(),
+            owner_pk.to_vec().into(),
+            fallback_pk.to_vec().into(),
             timeout_age.into(),
             next_ping.into(),
         ],
@@ -2353,26 +2325,12 @@ fn dms_claim_accepts_fallback_after_timeout_age() {
     let fallback = random_keypair();
     let owner_pk = owner.x_only_public_key().0.serialize();
     let fallback_pk = fallback.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let fallback_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&fallback_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
     let timeout_age = 100_i64;
     let compiled = compile_contract_file(
         "contracts/core/dead-man-switch.sil",
         vec![
-            owner_hash.into(),
-            fallback_hash.into(),
+            owner_pk.to_vec().into(),
+            fallback_pk.to_vec().into(),
             timeout_age.into(),
             10_i64.into(),
         ],
@@ -2404,26 +2362,12 @@ fn dms_claim_rejects_before_timeout_age() {
     let fallback = random_keypair();
     let owner_pk = owner.x_only_public_key().0.serialize();
     let fallback_pk = fallback.x_only_public_key().0.serialize();
-    let owner_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&owner_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
-    let fallback_hash = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&fallback_pk)
-        .finalize()
-        .as_bytes()
-        .to_vec();
     let timeout_age = 100_i64;
     let compiled = compile_contract_file(
         "contracts/core/dead-man-switch.sil",
         vec![
-            owner_hash.into(),
-            fallback_hash.into(),
+            owner_pk.to_vec().into(),
+            fallback_pk.to_vec().into(),
             timeout_age.into(),
             10_i64.into(),
         ],

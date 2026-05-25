@@ -1,23 +1,23 @@
 pragma silverscript ^0.1.0;
 
 contract DeadMansSwitch(
-    byte[32] init_owner,
-    byte[32] init_fallback,
+    pubkey init_owner,
+    pubkey init_fallback,
     int init_timeout_age,
     int init_last_ping_age
 ) {
-    byte[32] owner = init_owner;
-    byte[32] fallback = init_fallback;
+    pubkey owner = init_owner;
+    pubkey fallback = init_fallback;
     int timeout_age = init_timeout_age;
     int last_ping_age = init_last_ping_age;
 
     function requireOwner(pubkey owner_pk, sig owner_sig, State prev_state) {
-        require(blake2b(owner_pk) == prev_state.owner);
+        require(owner_pk == prev_state.owner);
         require(checkSig(owner_sig, owner_pk));
     }
 
     function requireFallback(pubkey fallback_pk, sig fallback_sig, State prev_state) {
-        require(blake2b(fallback_pk) == prev_state.fallback);
+        require(fallback_pk == prev_state.fallback);
         require(checkSig(fallback_sig, fallback_pk));
     }
 
@@ -52,10 +52,9 @@ contract DeadMansSwitch(
     }
 
     #[covenant.singleton(mode = transition)]
-    function update_fallback(State prev_state, byte[32] next_fallback, pubkey owner_pk, sig owner_sig) : (State) {
+    function update_fallback(State prev_state, pubkey next_fallback, pubkey owner_pk, sig owner_sig) : (State) {
         requireValidState(prev_state);
         requireOwner(owner_pk, owner_sig, prev_state);
-        require(next_fallback != byte[32](0));
         require(next_fallback != prev_state.fallback);
         return({
             owner: prev_state.owner,
