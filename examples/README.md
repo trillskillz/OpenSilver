@@ -12,6 +12,18 @@ shapes) with copy-pasteable commands.
   every other pattern follows. Read this first; the other 21 patterns
   swap pattern ids but keep the same shape.
 
+## ZK-aware patterns (Phase 5)
+
+The Phase-5 ZK family lives under [`examples/zk/`](./zk/README.md).
+Every contract under `contracts/zk/` requires the OpenSilver
+**patch lane** (`npm run patch:silverc:zk`) to compile — the ZK
+examples README leads with that prerequisite. Four walkthroughs are
+paste-ready: Verified Computation (5.1), Private Asset Transfer
+(5.2 covenant-side v1), ZK-Verified Oracle (5.3), and Proof-Stitched
+Multi-Pattern (5.4). Each one carries an explicit "what v1 doesn't do"
+section so deployers don't confuse covenant correctness with circuit
+correctness.
+
 ## Token patterns (Phase 4 — KCC20 family)
 
 The KCC20 family lives under [`examples/tokens/`](./tokens/README.md).
