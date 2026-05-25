@@ -365,6 +365,168 @@ export function buildPatternCompilePlan(
   };
 }
 
+// ─── Deploy-plan: pattern + ctor args → deploy intent JSON ─────────────────
+//
+// Wallets and IDEs that want to deploy an OpenSilver pattern need a
+// consistent JSON shape they can render: "here's the compiled script,
+// here's the P2SH redeem-script hash, here's how to derive a Kaspa
+// address from it, here's what the entrypoints look like." This bundles
+// the SDK's existing compile + extract helpers into one user-facing
+// artifact so consumers don't have to glue them together themselves.
+//
+// The deploy-plan deliberately does NOT compute the final Kaspa address
+// string — the network-prefix encoding is a kaspa-wasm concern, and
+// different deployments target different networks (kaspa:testnet-12,
+// kaspa:mainnet, etc.). Instead we emit the raw redeem-script bytes +
+// hash, leaving the address materialization to the caller via the
+// integrations layer's P2shAddressDeriver callback (or kaspa-wasm
+// directly).
+
+export interface PatternDeployPlan {
+  patternId: string;
+  patternTitle: string;
+  phase: PatternPhase;
+  stateful: boolean;
+  status: PatternStatus;
+  constructorArgs: Array<string | number | boolean>;
+  compiled: {
+    contractName?: string;
+    compilerVersion?: string;
+    scriptHex: string;
+    scriptLength: number;
+  };
+  p2shCommitment: {
+    scheme: 'p2sh';
+    redeemScriptHex: string;
+    // Note: P2SH commitment hash is computed by the engine as
+    // blake2b(redeem_script) — we don't precompute it here because
+    // the consumer's kaspa-wasm version may use a different blake2b
+    // variant or domain separator. Use kaspa-wasm's
+    // `Address.fromScriptPublicKey(...)` or
+    // integrations/P2shAddressDeriver.
+  };
+  deployment: {
+    instructions: string[];
+    entrypoints: string[];
+    networkHints: string[];
+  };
+  compiler: PatternCompilerSupport;
+  verification: PatternVerification;
+  docPath?: string;
+  contractPath?: string;
+}
+
+export interface BuildDeployPlanOptions {
+  silvercBinary?: string;
+  repoRoot?: string;
+  network?: 'kaspa:testnet-12' | 'kaspa:testnet-11' | 'kaspa:mainnet';
+}
+
+function extractEntrypoints(artifact: unknown): string[] {
+  // Best-effort discovery from the compiled artifact's abi/entrypoint
+  // list. silverc's CompiledContract JSON includes `abi: [{name, ...}]`.
+  // Covenant-declaration entrypoints come back with a compiler-generated
+  // wrapper prefix — `__covenant_entrypoint_(auth|leader|delegate)_<name>`.
+  // We strip those for display so consumers see the user-visible function
+  // names from the source. Plain `entrypoint function` names come through
+  // unchanged.
+  if (!artifact || typeof artifact !== 'object') return [];
+  const maybe = artifact as { abi?: Array<{ name?: unknown }> };
+  if (!Array.isArray(maybe.abi)) return [];
+  const wrapperPrefixes = [
+    '__covenant_entrypoint_auth_',
+    '__covenant_entrypoint_leader_',
+    '__covenant_entrypoint_delegate_',
+  ];
+  const names = new Set<string>();
+  for (const entry of maybe.abi) {
+    if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string') continue;
+    let name = entry.name;
+    for (const prefix of wrapperPrefixes) {
+      if (name.startsWith(prefix)) {
+        name = name.slice(prefix.length);
+        break;
+      }
+    }
+    names.add(name);
+  }
+  return Array.from(names);
+}
+
+export function buildPatternDeployPlan(
+  id: string,
+  constructorArgs: Array<string | number | boolean>,
+  options: BuildDeployPlanOptions = {},
+): PatternDeployPlan {
+  const pattern = getPatternById(id);
+  if (!pattern) {
+    throw new Error(`unknown pattern id: ${id}`);
+  }
+  if (!pattern.contractPath) {
+    throw new Error(`pattern ${id} has no contractPath; cannot build a deploy plan`);
+  }
+  // Compile in `compile` mode (not ast-only) so we have a real script
+  // to extract. Override only with caller intent.
+  const spec = buildSilvercCompileSpec(pattern.contractPath, constructorArgs, {
+    ...(options.silvercBinary ? { silvercBinary: options.silvercBinary } : {}),
+    mode: 'compile',
+  });
+  const run = runSilvercCompileSpec(spec, {
+    ...(options.repoRoot ? { repoRoot: options.repoRoot } : {}),
+  });
+  const artifact = run.artifact as { contract_name?: string; compiler_version?: string };
+  const script = extractCompiledScript(run.artifact);
+  const scriptHex = Array.from(script)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+
+  const network = options.network ?? 'kaspa:testnet-12';
+  const networkHints: string[] = [
+    `Target network: ${network}.`,
+    'Derive the deploy address via `kaspa-wasm` (e.g., Address.fromScriptPublicKey(pay_to_script_hash_script(redeem_script), networkType)).',
+    'OR use the `integrations` package: `materializeCovenantOutput(...)` with a `P2shAddressDeriver` callback.',
+  ];
+  if (pattern.compiler.requiresPatchedSilverc) {
+    networkHints.push(
+      `NOTE: this pattern requires the patched silverc — run \`${pattern.compiler.bootstrapCommand}\` before compiling.`,
+    );
+  }
+
+  return {
+    patternId: pattern.id,
+    patternTitle: pattern.title,
+    phase: pattern.phase,
+    stateful: pattern.stateful,
+    status: pattern.status,
+    constructorArgs,
+    compiled: {
+      ...(artifact.contract_name ? { contractName: artifact.contract_name } : {}),
+      ...(artifact.compiler_version ? { compilerVersion: artifact.compiler_version } : {}),
+      scriptHex,
+      scriptLength: script.length,
+    },
+    p2shCommitment: {
+      scheme: 'p2sh',
+      redeemScriptHex: scriptHex,
+    },
+    deployment: {
+      instructions: [
+        `Bootstrap silverc with: ${pattern.compiler.bootstrapCommand}`,
+        `Compile the contract: opensilver compile-pattern ${pattern.id} --ctor '<json>'`,
+        `Derive the P2SH address from the compiled redeem script (see networkHints).`,
+        `Fund the address with KAS to deploy.`,
+        `Subsequent spends each invoke one of the documented entrypoints.`,
+      ],
+      entrypoints: extractEntrypoints(run.artifact),
+      networkHints,
+    },
+    compiler: pattern.compiler,
+    verification: pattern.verification,
+    ...(pattern.docPath ? { docPath: pattern.docPath } : {}),
+    ...(pattern.contractPath ? { contractPath: pattern.contractPath } : {}),
+  };
+}
+
 export const KCC20_IDENTIFIER_TYPE = {
   pubkey: 0x00,
   scriptHash: 0x01,

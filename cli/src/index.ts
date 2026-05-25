@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { buildIntegrationManifest } from '@opensilver/integrations';
 import {
   buildPatternCompilePlan,
+  buildPatternDeployPlan,
   describeCovenantScriptPublicKey,
   extractCompiledScript,
   getPatternById,
@@ -53,6 +54,7 @@ function printUsage(): void {
     '  opensilver doc <pattern-id>',
     '  opensilver compile <file.sil> [--ast-only] [--ctor <json>] [--ctor-file <path>] [--repo-root <path>]',
     '  opensilver compile-pattern <pattern-id> [--ast-only] [--ctor <json>] [--ctor-file <path>] [--repo-root <path>]',
+    '  opensilver deploy-plan <pattern-id> --ctor <json> [--network <kaspa:testnet-12|kaspa:testnet-11|kaspa:mainnet>] [--ctor-file <path>] [--repo-root <path>]',
     '  opensilver export-manifest [--consumer <wallet|ide|mcp>] [--phase <core|krc20|zk-aware>] [--out <path>]',
     '  opensilver script <file.sil> [--hex] [--ctor <json>] [--ctor-file <path>] [--repo-root <path>]',
     '  opensilver help',
@@ -70,6 +72,7 @@ function printUsage(): void {
     '  opensilver get core.timelock --json',
     '  opensilver compile contracts/core/ownable.sil --ast-only',
     '  opensilver export-manifest --consumer wallet --phase krc20 --out wallet-manifest.json',
+    '  opensilver deploy-plan core.timelock --ctor \'["00..32hex","00..32hex",1700000000,true]\'',
   ].join('\n');
   process.stdout.write(usage + '\n');
 }
@@ -263,6 +266,40 @@ function cmdCompilePattern(positionals: string[], flags: Record<string, string |
   }
 }
 
+function cmdDeployPlan(positionals: string[], flags: Record<string, string | boolean>): number {
+  const id = positionals[0];
+  if (!id) {
+    process.stderr.write('opensilver deploy-plan: pattern id required\n');
+    return 2;
+  }
+  const repoRoot = typeof flags['repo-root'] === 'string' ? (flags['repo-root'] as string) : process.cwd();
+  let ctorArgs: Array<string | number | boolean>;
+  try {
+    ctorArgs = readCtorArgs(flags);
+  } catch (err) {
+    process.stderr.write(`opensilver deploy-plan: ${(err as Error).message}\n`);
+    return 2;
+  }
+  const networkFlag = flags['network'];
+  let network: 'kaspa:testnet-12' | 'kaspa:testnet-11' | 'kaspa:mainnet' | undefined;
+  if (typeof networkFlag === 'string') {
+    if (networkFlag === 'kaspa:testnet-12' || networkFlag === 'kaspa:testnet-11' || networkFlag === 'kaspa:mainnet') {
+      network = networkFlag;
+    } else {
+      process.stderr.write(`opensilver deploy-plan: unknown network ${String(networkFlag)}\n`);
+      return 2;
+    }
+  }
+  try {
+    const plan = buildPatternDeployPlan(id, ctorArgs, { repoRoot, ...(network ? { network } : {}) });
+    process.stdout.write(JSON.stringify(plan, null, 2) + '\n');
+    return 0;
+  } catch (err) {
+    process.stderr.write(`opensilver deploy-plan: ${(err as Error).message}\n`);
+    return 1;
+  }
+}
+
 function cmdExportManifest(flags: Record<string, string | boolean>): number {
   const consumerFlag = flags['consumer'];
   const phaseFlag = flags['phase'];
@@ -375,6 +412,8 @@ export function runCli(argv: string[]): number {
       return cmdCompile(parsed.positionals, parsed.flags);
     case 'compile-pattern':
       return cmdCompilePattern(parsed.positionals, parsed.flags);
+    case 'deploy-plan':
+      return cmdDeployPlan(parsed.positionals, parsed.flags);
     case 'export-manifest':
       return cmdExportManifest(parsed.flags);
     case 'script':
