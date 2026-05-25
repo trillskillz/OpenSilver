@@ -10,8 +10,11 @@ design notes at
 
 ## Status
 
-Compile-validated; runtime test landing alongside the v2 oracle
-runtime test in a follow-up.
+Compile-validated and runtime-verified indirectly through the v2
+oracle binding test: the publish transaction creates the consumer
+UTXO via `validateOutputStateWithTemplate`, which is what
+`zk_verified_oracle_v2_accepts_publish_with_correct_binding` covers
+end-to-end.
 
 ## What this consumer is for
 
@@ -118,7 +121,7 @@ oracle's `consumer_new_state.recipient` check would change to
 
 - Compile-validated: ✓ (`tests/zk/zk-verified-oracle-v2-compile.test.ts`
   — covers both OracleConsumer and the v2 oracle in one file)
-- Runtime-validated: **deferred to follow-up commit**.
+- Runtime-validated: ✓ via the v2 oracle binding test.
 - Audit-checked: ✓ (`tests/audit/audit-all-patterns.test.ts`).
   No expected findings — no template binding, no hardcoded pubkey
   state.

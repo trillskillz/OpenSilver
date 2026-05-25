@@ -16,12 +16,13 @@ mechanism is the cross-contract output binding.
 
 ## Status
 
-**Compile-validated; runtime test landing in a follow-up.** v2 is
-the first non-KCC20 use of `validateOutputStateWithTemplate` in
-OpenSilver. The contracts compile and the AST regression test is
-live; the engine-side runtime test needs a multi-output template-
-splice setup adapted from the KCC20 controller suite, which is the
-next slice.
+**Compile-validated + runtime-verified end-to-end.** v2 is the
+first non-KCC20 use of `validateOutputStateWithTemplate` in
+OpenSilver, and the three runtime tests in
+`runtime-tests/tests/zk_runtime.rs` prove the binding works through
+the real `kaspa-txscript` engine: positive (correct binding accepts),
+wrong-recipient (binding pre-check rejects), tampered-proof (Groth16
+verification rejects).
 
 ## What v2 changes vs v1
 
@@ -150,7 +151,9 @@ follow-ups):
 
 - Compile-validated: ✓ (patch lane required;
   `tests/zk/zk-verified-oracle-v2-compile.test.ts`)
-- Runtime-validated: **deferred to follow-up commit**.
+- Runtime-validated: ✓ (3 cargo tests in
+  `runtime-tests/tests/zk_runtime.rs` exercising positive +
+  wrong-recipient + tampered-proof paths through the real engine).
 - Audit-checked: ✓ (`tests/audit/audit-all-patterns.test.ts`).
   Expected findings: `OS-003`, `KIP20-003` — same template-hash
   posture as the KCC20 controller family. See `AUDIT_CHECKLIST.md`

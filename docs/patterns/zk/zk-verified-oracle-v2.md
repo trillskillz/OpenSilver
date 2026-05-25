@@ -1,6 +1,6 @@
 # ZK-Verified Oracle v2 (Pattern 5.3 v2)
 
-Status: scaffolded; compile-validated. Runtime test landing in a follow-up.
+Status: scaffolded; compile-validated + runtime-verified end-to-end.
 
 ## Summary
 
@@ -145,12 +145,19 @@ fresh struct value with the right fields.
 ## Verification posture
 
 - Compile-validated: ✓ (`tests/zk/zk-verified-oracle-v2-compile.test.ts`)
-- Runtime-validated: **deferred to follow-up commit.** The runtime
-  test needs a multi-output transaction setup with a constructed
-  OracleConsumer template + state-bytes splice for output[0]. The
-  KCC20 controller tests provide the template idiom; adapting it to
-  the non-KCC20 case is the next slice.
-- Audit-checked: pending runtime test landing first.
+- Runtime-validated: ✓ (3 cargo tests in
+  `runtime-tests/tests/zk_runtime.rs`:
+  `zk_verified_oracle_v2_accepts_publish_with_correct_binding`,
+  `_rejects_wrong_consumer_recipient_in_state`,
+  `_rejects_tampered_proof`). The harness compiles OracleConsumer
+  twice — once with zero state to probe the template, once with the
+  real (pi[0], recipient) to lock the output[0] script — then
+  computes the genesis cov-id from the funding outpoint + output,
+  drives the publish transaction with witness sigs + proof + struct
+  consumer_new_state, and verifies the engine accepts the binding.
+- Audit-checked: ✓ (`tests/audit/audit-all-patterns.test.ts`).
+  Expected findings: `OS-003`, `KIP20-003` — same template-hash
+  trust posture as the KCC20 controller family.
 
 ## Cross-references
 

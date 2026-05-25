@@ -22,7 +22,7 @@ use kaspa_consensus_core::hashing::sighash::{SigHashReusedValuesUnsync, calc_sch
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::mass::units::SigopCount;
 use kaspa_consensus_core::tx::{
-    CovenantBinding, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId,
+    MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId,
     TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use kaspa_txscript::caches::Cache;
@@ -35,7 +35,9 @@ use rand::thread_rng;
 use secp256k1::{Keypair, Message, Secp256k1, SecretKey};
 use serde::Deserialize;
 use silverscript_lang::ast::Expr;
-use silverscript_lang::compiler::{CompileOptions, CompiledContract, compile_contract};
+use silverscript_lang::compiler::{CompileOptions, CompiledContract, compile_contract, struct_object};
+
+mod common;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().expect("runtime-tests lives under repo root").to_path_buf()
@@ -1016,4 +1018,449 @@ fn private_asset_transfer_rejects_payout_to_wrong_recipient() {
     let err = execute_plain_input(mutable.tx, utxo)
         .expect_err("wrong-recipient payout must fail");
     assert!(matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse), "unexpected error: {err:?}");
+}
+
+// ─── Pattern 5.3 v2: cross-contract output binding ─────────────────────────
+//
+// What these tests prove:
+//   The v2 oracle's `publish` entrypoint pins tx.outputs[0] to a new
+//   OracleConsumer UTXO via validateOutputStateWithTemplate. The consumer
+//   carries (published_value = pi[0], recipient = deploy_recipient) as
+//   state. A caller who supplies a wrong consumer_new_state, a wrong
+//   output script, or a tampered proof gets the spend rejected.
+
+fn compile_oracle_consumer(published_value: &[u8], recipient_pk: &[u8]) -> CompiledContract<'static> {
+    let source = fs::read_to_string(repo_root().join("contracts/zk/oracle-consumer.sil"))
+        .expect("oracle-consumer.sil source reads");
+    let args: Vec<Expr<'static>> =
+        vec![bytes_to_expr(published_value), bytes_to_expr(recipient_pk)];
+    let leaked_source: &'static str = Box::leak(source.into_boxed_str());
+    let leaked_args: &'static [Expr<'static>] = Vec::leak(args);
+    compile_contract(leaked_source, leaked_args, CompileOptions::default())
+        .expect("oracle-consumer.sil compiles under pinned silverc")
+}
+
+fn compile_zk_verified_oracle_v2(
+    verifying_key: &[u8],
+    consumer_recipient_pk: &[u8],
+    threshold: i64,
+    guardian1_pk: &[u8],
+    guardian2_pk: &[u8],
+    guardian3_pk: &[u8],
+    template_prefix: &[u8],
+    template_suffix: &[u8],
+    expected_template_hash: &[u8],
+) -> CompiledContract<'static> {
+    let source = fs::read_to_string(repo_root().join("contracts/zk/zk-verified-oracle-v2.sil"))
+        .expect("zk-verified-oracle-v2.sil source reads");
+    let args: Vec<Expr<'static>> = vec![
+        bytes_to_expr(verifying_key),
+        bytes_to_expr(consumer_recipient_pk),
+        Expr::int(threshold),
+        bytes_to_expr(guardian1_pk),
+        bytes_to_expr(guardian2_pk),
+        bytes_to_expr(guardian3_pk),
+        Expr::int(template_prefix.len() as i64),
+        Expr::int(template_suffix.len() as i64),
+        bytes_to_expr(expected_template_hash),
+        bytes_to_expr(template_prefix),
+        bytes_to_expr(template_suffix),
+    ];
+    let leaked_source: &'static str = Box::leak(source.into_boxed_str());
+    let leaked_args: &'static [Expr<'static>] = Vec::leak(args);
+    compile_contract(leaked_source, leaked_args, CompileOptions::default())
+        .expect("zk-verified-oracle-v2.sil compiles under the patched silverc")
+}
+
+fn oracle_consumer_state_arg<'i>(published_value: Vec<u8>, recipient_pk: Vec<u8>) -> Expr<'i> {
+    struct_object(vec![
+        ("published_value", Expr::bytes(published_value)),
+        ("recipient", Expr::bytes(recipient_pk)),
+    ])
+}
+
+/// Execute a single-input tx with full covenants context. v2's output
+/// binding is checked through the CovenantsContext path even though the
+/// input itself isn't a covenant UTXO — the tx-level cov-ctx scans
+/// outputs for covenant bindings, which is what validateOutputStateWithTemplate
+/// resolves against.
+fn execute_input_with_covenant_ctx(tx: Transaction, utxo: UtxoEntry) -> Result<(), TxScriptError> {
+    let reused_values = SigHashReusedValuesUnsync::new();
+    let sig_cache = Cache::new(10_000);
+    let input = tx.inputs[0].clone();
+    let populated = PopulatedTransaction::new(&tx, vec![utxo.clone()]);
+    let cov_ctx = CovenantsContext::from_tx(&populated).map_err(TxScriptError::from)?;
+    let mut vm = TxScriptEngine::from_transaction_input(
+        &populated,
+        &input,
+        0,
+        &utxo,
+        EngineCtx::new(&sig_cache).with_reused(&reused_values).with_covenants_ctx(&cov_ctx),
+        EngineFlags { covenants_enabled: true, sigop_script_units: 0.into() },
+    );
+    vm.execute()
+}
+
+/// Build the publish-tx output: a P2SH of an OracleConsumer compiled
+/// with the real (published_value, recipient) state. The covenant binding's
+/// cov-id is derived from (funding_outpoint, output_without_covenant) so
+/// the engine's CovenantsContext accepts it as a valid genesis binding.
+fn build_consumer_output(
+    consumer_with_real_state: &CompiledContract<'_>,
+    funding_outpoint: TransactionOutpoint,
+    value: u64,
+) -> TransactionOutput {
+    let script_public_key = pay_to_script_hash_script(&consumer_with_real_state.script);
+    let without_covenant = TransactionOutput {
+        value,
+        script_public_key: script_public_key.clone(),
+        covenant: None,
+    };
+    let cov_id = kaspa_consensus_core::hashing::covenant_id::covenant_id(
+        funding_outpoint,
+        std::iter::once((0, &without_covenant)),
+    );
+    TransactionOutput {
+        value,
+        script_public_key,
+        covenant: Some(kaspa_consensus_core::tx::CovenantBinding {
+            authorizing_input: 0,
+            covenant_id: cov_id,
+        }),
+    }
+}
+
+#[test]
+fn zk_verified_oracle_v2_accepts_publish_with_correct_binding() {
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let proof = decode_hex(&fixture.proof_compressed_hex);
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+    assert_eq!(public_inputs.len(), 5);
+
+    let consumer_recipient = random_keypair();
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let consumer_recipient_pk = consumer_recipient.x_only_public_key().0.serialize().to_vec();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+
+    // Step 1: probe the OracleConsumer template with placeholder state
+    //         (zeros). This is what gives us prefix/suffix/hash for the
+    //         oracle's deploy-time template binding.
+    let consumer_probe = compile_oracle_consumer(&vec![0u8; 32], &consumer_recipient_pk);
+    let (template_prefix, template_suffix, expected_template_hash) =
+        common::compiled_template_parts_and_hash(&consumer_probe);
+
+    // Step 2: compile v2 oracle with those template constants pinned.
+    let threshold = 2_i64;
+    let oracle = compile_zk_verified_oracle_v2(
+        &verifying_key,
+        &consumer_recipient_pk,
+        threshold,
+        &g1_pk,
+        &g2_pk,
+        &g3_pk,
+        &template_prefix,
+        &template_suffix,
+        &expected_template_hash,
+    );
+
+    // Step 3: compile OracleConsumer with the REAL state (pi[0],
+    //         consumer_recipient) — this is what output[0] will lock
+    //         under. The state bytes spliced in at the state_layout
+    //         window must match the witness-supplied struct
+    //         consumer_new_state when serialized.
+    let consumer_real = compile_oracle_consumer(&public_inputs[0], &consumer_recipient_pk);
+
+    let input_value = 5_000u64;
+    let output_value = input_value - 1_000; // miner fee
+    let funding_outpoint = TransactionOutpoint {
+        transaction_id: TransactionId::from_bytes([0xB2; 32]),
+        index: 0,
+    };
+    let output0 = build_consumer_output(&consumer_real, funding_outpoint, output_value);
+
+    let input = TransactionInput {
+        previous_outpoint: funding_outpoint,
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(
+        input_value,
+        ScriptPublicKey::new(0, oracle.script.clone().into()),
+        0,
+        false,
+        None,
+    );
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let sig1 = schnorr_signature(&mutable, 0, &g1);
+    let sig2 = schnorr_signature(&mutable, 0, &g2);
+    let attacker = random_keypair();
+    let attacker_pk = attacker.x_only_public_key().0.serialize().to_vec();
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+
+    let consumer_new_state = oracle_consumer_state_arg(
+        public_inputs[0].clone(),
+        consumer_recipient_pk.clone(),
+    );
+
+    let sigscript = oracle
+        .build_sig_script(
+            "publish",
+            vec![
+                g1_pk.into(),
+                sig1.into(),
+                g2_pk.into(),
+                sig2.into(),
+                attacker_pk.into(),
+                attacker_sig.into(),
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+                consumer_new_state,
+            ],
+        )
+        .expect("publish sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let result = execute_input_with_covenant_ctx(mutable.tx, utxo);
+    assert!(
+        result.is_ok(),
+        "v2 oracle publish should succeed with matching consumer binding: {}",
+        result.unwrap_err()
+    );
+
+    let _ = g3_pk; // configured but not invoked on the 2-of-3 happy path
+}
+
+#[test]
+fn zk_verified_oracle_v2_rejects_wrong_consumer_recipient_in_state() {
+    // Witness-supplied consumer_new_state.recipient does NOT match the
+    // oracle's deploy-time consumer_recipient. The bindConsumerOutput
+    // gate (`require(consumer_new_state.recipient == consumer_recipient)`)
+    // must reject before validateOutputStateWithTemplate even runs.
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let proof = decode_hex(&fixture.proof_compressed_hex);
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let consumer_recipient = random_keypair();
+    let attacker_recipient = random_keypair();
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let consumer_recipient_pk = consumer_recipient.x_only_public_key().0.serialize().to_vec();
+    let attacker_recipient_pk = attacker_recipient.x_only_public_key().0.serialize().to_vec();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+
+    let consumer_probe = compile_oracle_consumer(&vec![0u8; 32], &consumer_recipient_pk);
+    let (template_prefix, template_suffix, expected_template_hash) =
+        common::compiled_template_parts_and_hash(&consumer_probe);
+
+    let threshold = 2_i64;
+    let oracle = compile_zk_verified_oracle_v2(
+        &verifying_key,
+        &consumer_recipient_pk,
+        threshold,
+        &g1_pk,
+        &g2_pk,
+        &g3_pk,
+        &template_prefix,
+        &template_suffix,
+        &expected_template_hash,
+    );
+
+    // Output binds to the ATTACKER recipient — script bytes encode
+    // attacker_recipient_pk in the state window. The witness-supplied
+    // consumer_new_state will claim the same, but the oracle's
+    // bindConsumerOutput pre-check rejects it before the template
+    // comparison even happens.
+    let consumer_real = compile_oracle_consumer(&public_inputs[0], &attacker_recipient_pk);
+
+    let input_value = 5_000u64;
+    let output_value = input_value - 1_000;
+    let funding_outpoint = TransactionOutpoint {
+        transaction_id: TransactionId::from_bytes([0xB3; 32]),
+        index: 0,
+    };
+    let output0 = build_consumer_output(&consumer_real, funding_outpoint, output_value);
+
+    let input = TransactionInput {
+        previous_outpoint: funding_outpoint,
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(
+        input_value,
+        ScriptPublicKey::new(0, oracle.script.clone().into()),
+        0,
+        false,
+        None,
+    );
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let sig1 = schnorr_signature(&mutable, 0, &g1);
+    let sig2 = schnorr_signature(&mutable, 0, &g2);
+    let attacker = random_keypair();
+    let attacker_pk = attacker.x_only_public_key().0.serialize().to_vec();
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+
+    let consumer_new_state =
+        oracle_consumer_state_arg(public_inputs[0].clone(), attacker_recipient_pk.clone());
+
+    let sigscript = oracle
+        .build_sig_script(
+            "publish",
+            vec![
+                g1_pk.into(),
+                sig1.into(),
+                g2_pk.into(),
+                sig2.into(),
+                attacker_pk.into(),
+                attacker_sig.into(),
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+                consumer_new_state,
+            ],
+        )
+        .expect("publish sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_input_with_covenant_ctx(mutable.tx, utxo)
+        .expect_err("wrong-recipient consumer binding must reject");
+    assert!(
+        matches!(err, TxScriptError::VerifyError | TxScriptError::EvalFalse),
+        "unexpected error: {err:?}"
+    );
+
+    let _ = g3_pk;
+}
+
+#[test]
+fn zk_verified_oracle_v2_rejects_tampered_proof() {
+    // Valid committee quorum, correctly-bound consumer output, but the
+    // submitted proof has been tampered. OpGroth16Verify rejects.
+    let fixture = load_groth16_fixture();
+    let verifying_key = decode_hex(&fixture.verifying_key_compressed_hex);
+    let mut proof = decode_hex(&fixture.proof_compressed_hex);
+    // Tamper a byte in the proof. Any mutation makes the BN254 pairing
+    // check fail — same trick used in the v1 oracle tampered-proof test.
+    proof[5] ^= 0x01;
+
+    let public_inputs: Vec<Vec<u8>> =
+        fixture.public_inputs_hex.iter().map(|s| decode_hex(s)).collect();
+
+    let consumer_recipient = random_keypair();
+    let g1 = random_keypair();
+    let g2 = random_keypair();
+    let g3 = random_keypair();
+    let consumer_recipient_pk = consumer_recipient.x_only_public_key().0.serialize().to_vec();
+    let g1_pk = g1.x_only_public_key().0.serialize().to_vec();
+    let g2_pk = g2.x_only_public_key().0.serialize().to_vec();
+    let g3_pk = g3.x_only_public_key().0.serialize().to_vec();
+
+    let consumer_probe = compile_oracle_consumer(&vec![0u8; 32], &consumer_recipient_pk);
+    let (template_prefix, template_suffix, expected_template_hash) =
+        common::compiled_template_parts_and_hash(&consumer_probe);
+
+    let threshold = 2_i64;
+    let oracle = compile_zk_verified_oracle_v2(
+        &verifying_key,
+        &consumer_recipient_pk,
+        threshold,
+        &g1_pk,
+        &g2_pk,
+        &g3_pk,
+        &template_prefix,
+        &template_suffix,
+        &expected_template_hash,
+    );
+
+    let consumer_real = compile_oracle_consumer(&public_inputs[0], &consumer_recipient_pk);
+    let input_value = 5_000u64;
+    let output_value = input_value - 1_000;
+    let funding_outpoint = TransactionOutpoint {
+        transaction_id: TransactionId::from_bytes([0xB4; 32]),
+        index: 0,
+    };
+    let output0 = build_consumer_output(&consumer_real, funding_outpoint, output_value);
+
+    let input = TransactionInput {
+        previous_outpoint: funding_outpoint,
+        signature_script: vec![],
+        sequence: 0,
+        mass: SigopCount(1).into(),
+    };
+    let tx = Transaction::new(1, vec![input], vec![output0], 0, Default::default(), 0, vec![]);
+    let utxo = UtxoEntry::new(
+        input_value,
+        ScriptPublicKey::new(0, oracle.script.clone().into()),
+        0,
+        false,
+        None,
+    );
+    let mut mutable = MutableTransaction::with_entries(tx, vec![utxo.clone()]);
+
+    let sig1 = schnorr_signature(&mutable, 0, &g1);
+    let sig2 = schnorr_signature(&mutable, 0, &g2);
+    let attacker = random_keypair();
+    let attacker_pk = attacker.x_only_public_key().0.serialize().to_vec();
+    let attacker_sig = schnorr_signature(&mutable, 0, &attacker);
+
+    let consumer_new_state =
+        oracle_consumer_state_arg(public_inputs[0].clone(), consumer_recipient_pk.clone());
+
+    let sigscript = oracle
+        .build_sig_script(
+            "publish",
+            vec![
+                g1_pk.into(),
+                sig1.into(),
+                g2_pk.into(),
+                sig2.into(),
+                attacker_pk.into(),
+                attacker_sig.into(),
+                proof.into(),
+                public_inputs[0].clone().into(),
+                public_inputs[1].clone().into(),
+                public_inputs[2].clone().into(),
+                public_inputs[3].clone().into(),
+                public_inputs[4].clone().into(),
+                consumer_new_state,
+            ],
+        )
+        .expect("publish sigscript builds");
+    mutable.tx.inputs[0].signature_script = sigscript;
+
+    let err = execute_input_with_covenant_ctx(mutable.tx, utxo)
+        .expect_err("tampered proof must reject");
+    // ZK precompile failures surface as ZkIntegrity; standard verify
+    // errors surface as VerifyError/EvalFalse. Accept either, like the
+    // v1 oracle tampered-proof test does.
+    let allowed = matches!(
+        &err,
+        TxScriptError::VerifyError | TxScriptError::EvalFalse | TxScriptError::ZkIntegrity(_),
+    );
+    assert!(allowed, "unexpected error: {err:?}");
+
+    let _ = g3_pk;
 }

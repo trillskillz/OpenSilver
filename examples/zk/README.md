@@ -35,8 +35,8 @@ merges. Until upstream lands the surface natively, you must rerun
 | 5.2 Private Asset Transfer | [`private-asset-transfer/`](./private-asset-transfer/README.md) | "I'm spending a valid commitment in the deploy-time tree to the recipient slot in pi[2]" | Privacy-preserving payments where transfer validity is in-circuit |
 | 5.3 ZK-Verified Oracle | [`zk-verified-oracle/`](./zk-verified-oracle/README.md) | "M-of-N guardians attest AND the computation is sound" | Trust-minimised oracle: both data correctness and publish-authority gated |
 | 5.4 Proof-Stitched Multi-Pattern | [`proof-stitched-multi-pattern/`](./proof-stitched-multi-pattern/README.md) | "Run Groth16 once; amortise across N covenant inputs" | Batch payouts where per-recipient cost dominates |
-| 5.3 v2 ZK-Verified Oracle (cross-contract binding) | [`zk-verified-oracle-v2/`](./zk-verified-oracle-v2/README.md) | "5.3 + bind the published value into a covenant-bound consumer output via `validateOutputStateWithTemplate`" | The oracle's published value needs to be programmable on-chain, not just trigger a release. _Compile-only landing; runtime test follow-up._ |
-| (companion) Oracle Consumer | [`oracle-consumer/`](./oracle-consumer/README.md) | Holds the published value in state; `release` to a deploy-time recipient (replaceable by downstream forks) | Used as the receipt UTXO created by the v2 oracle publish. _Compile-only landing._ |
+| 5.3 v2 ZK-Verified Oracle (cross-contract binding) | [`zk-verified-oracle-v2/`](./zk-verified-oracle-v2/README.md) | "5.3 + bind the published value into a covenant-bound consumer output via `validateOutputStateWithTemplate`" | The oracle's published value needs to be programmable on-chain, not just trigger a release. Runtime-verified. |
+| (companion) Oracle Consumer | [`oracle-consumer/`](./oracle-consumer/README.md) | Holds the published value in state; `release` to a deploy-time recipient (replaceable by downstream forks) | Used as the receipt UTXO created by the v2 oracle publish. Runtime-verified via the v2 oracle binding test. |
 
 ## What the covenant side does — and doesn't
 

@@ -1,6 +1,6 @@
 # Oracle Consumer
 
-Status: scaffolded; compile-validated. Runtime test landing in a follow-up.
+Status: scaffolded; compile-validated; exercised indirectly through the v2 oracle runtime test (the publish transaction creates the consumer UTXO via `validateOutputStateWithTemplate`, which is what `zk_verified_oracle_v2_accepts_publish_with_correct_binding` covers).
 
 ## Summary
 
@@ -127,8 +127,11 @@ downstream forks.
 
 - Compile-validated: ✓ (`tests/zk/zk-verified-oracle-v2-compile.test.ts`
   — covers both OracleConsumer and the v2 oracle in one test file)
-- Runtime-validated: deferred to the v2 oracle runtime-test follow-up.
-- Audit-checked: pending runtime test.
+- Runtime-validated: ✓ via the v2 oracle binding test, which
+  compiles OracleConsumer with real (published_value, recipient)
+  state and templates the publish-tx output[0] against it.
+- Audit-checked: ✓ (`tests/audit/audit-all-patterns.test.ts`). No
+  expected findings — no template binding, no hardcoded pubkey state.
 
 ## Cross-references
 
