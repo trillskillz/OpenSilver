@@ -48,6 +48,19 @@ Expected codes:
 
 Reason: the current MCP audit heuristics classify the v1 oracle in the same template-hash-trust bucket. Treat that tool output as part of the shipped posture unless/until the heuristic or the contract shape changes.
 
+#### ZK Verified Oracle v2 (cross-contract binding)
+
+Expected findings on:
+
+- `contracts/zk/zk-verified-oracle-v2.sil`
+
+Expected codes:
+
+- `OS-003`
+- `KIP20-003`
+
+Reason: v2 deliberately calls `validateOutputStateWithTemplate` to pin a consumer-covenant output. Same template-hash-trust bucket as the KCC20 controller family. The companion `contracts/zk/oracle-consumer.sil` does NOT trip these (no template binding, no hardcoded pubkey state).
+
 ## Regression gate
 
 Run:

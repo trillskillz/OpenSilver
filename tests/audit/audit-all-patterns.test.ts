@@ -78,6 +78,14 @@ const EXPECTED: Record<string, ExpectedAuditPosture> = {
   'contracts/zk/private-asset-transfer.sil':       { expectedAuditCodes: [], expectedKip20Codes: [], mustBeCompliant: true },
   'contracts/zk/zk-verified-oracle.sil':           { expectedAuditCodes: ['OS-003'], expectedKip20Codes: ['KIP20-003'], mustBeCompliant: true },
   'contracts/zk/proof-stitched-multi-pattern.sil': { expectedAuditCodes: [], expectedKip20Codes: [], mustBeCompliant: true },
+
+  // 5.3 v2 + consumer (compile-only scaffolds; runtime test follow-up).
+  // The v2 oracle uses validateOutputStateWithTemplate, so the same
+  // OS-003 / KIP20-003 template-hash findings fire as on the KCC20
+  // controller family. OracleConsumer has neither template binding nor
+  // hardcoded pubkeys; nothing trips.
+  'contracts/zk/zk-verified-oracle-v2.sil':        { expectedAuditCodes: ['OS-003'], expectedKip20Codes: ['KIP20-003'], mustBeCompliant: true },
+  'contracts/zk/oracle-consumer.sil':              { expectedAuditCodes: [], expectedKip20Codes: [], mustBeCompliant: true },
 };
 
 function findingsToCodes(findings: AuditFinding[]): string[] {

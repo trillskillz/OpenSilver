@@ -1,0 +1,51 @@
+pragma silverscript ^0.1.0;
+
+// OracleConsumer — companion covenant to Pattern 5.3 v2.
+//
+// COMPILE STATUS: vanilla pinned silverc — does NOT require the
+// Phase-5 patch lane. This contract has no ZK primitives; it only
+// consumes the binding that the v2 oracle imposes on its output.
+//
+// Design role:
+//   The v2 oracle (zk-verified-oracle-v2.sil) does not emit a
+//   terminal payout. Instead, every successful `publish` pins a
+//   CONSUMER OUTPUT carrying the published value as state. This
+//   contract is what locks that output — a singleton whose only
+//   state is the (published_value, recipient) tuple the oracle wrote.
+//
+// Why this is the right shape:
+//   - The publication is a covenant-bound receipt, not a payment.
+//     Downstream consumers (a freelance contract, a vesting cliff,
+//     anything that wants "release iff the oracle published X") can
+//     inspect the consumer's state by depositing into it.
+//   - The consumer's existence proves the oracle published. The
+//     consumer's state encodes what was published. The release path
+//     is just a P2PK redemption to a deploy-time recipient — but a
+//     downstream pattern could replace `release` with arbitrary logic
+//     gated on `published_value`.
+//   - This separates "the oracle ran and verified the proof" from
+//     "the published value triggers some action." Different parties
+//     can hold the oracle key vs the redemption key.
+
+contract OracleConsumer(byte[32] init_published_value, pubkey init_recipient) {
+    byte[32] published_value = init_published_value;
+    pubkey recipient = init_recipient;
+
+    function requireExactPayout(pubkey destination) {
+        int minerFee = 1000;
+        int amount = tx.inputs[this.activeInputIndex].value - minerFee;
+        byte[34] destinationLock = new ScriptPubKeyP2PK(destination);
+        require(tx.outputs[0].value == amount);
+        require(tx.outputs[0].scriptPubKey == byte[](destinationLock));
+    }
+
+    // Terminal redemption — recipient signs to drain the consumer
+    // UTXO. The published_value is in state; downstream consumers
+    // wanting to gate on a specific value would replace this body
+    // with `require(published_value == expected_value); ...`.
+    entrypoint function release(pubkey recipient_pk, sig recipient_sig) {
+        require(recipient_pk == recipient);
+        require(checkSig(recipient_sig, recipient_pk));
+        requireExactPayout(recipient);
+    }
+}

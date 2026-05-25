@@ -47,6 +47,10 @@ interface PatternManifestSeed {
   contractPath?: string;
   docPath?: string;
   tags?: string[];
+  // True when the pattern has a compile test but no runtime test yet —
+  // landed contracts whose engine-side coverage is the next commit.
+  // Consumers should NOT claim runtime/audit validation on these.
+  compileOnly?: boolean;
 }
 
 const patternManifestSeeds: PatternManifestSeed[] = [
@@ -260,6 +264,28 @@ const patternManifestSeeds: PatternManifestSeed[] = [
     contractPath: 'contracts/zk/proof-stitched-multi-pattern.sil',
     docPath: 'docs/patterns/zk/proof-stitched-multi-pattern.md',
   },
+  {
+    id: 'zk-aware.zk-verified-oracle-v2',
+    title: 'ZK-Verified Oracle (v2 cross-contract binding)',
+    phase: 'zk-aware',
+    stateful: false,
+    status: 'scaffolded',
+    compileOnly: true,
+    summary: 'v2 variant of the ZK-Verified Oracle that pins a covenant-bound consumer output via validateOutputStateWithTemplate instead of a terminal payout. First non-KCC20 use of cross-contract output binding in OpenSilver. Compile-validated; runtime test landing in a follow-up.',
+    contractPath: 'contracts/zk/zk-verified-oracle-v2.sil',
+    docPath: 'docs/patterns/zk/zk-verified-oracle-v2.md',
+  },
+  {
+    id: 'zk-aware.oracle-consumer',
+    title: 'Oracle Consumer',
+    phase: 'zk-aware',
+    stateful: true,
+    status: 'scaffolded',
+    compileOnly: true,
+    summary: 'Companion covenant to the v2 ZK-Verified Oracle. Holds the published value as state and exposes a release entrypoint paying a deploy-time recipient. Downstream patterns wanting to gate on a specific oracle-published value substitute a custom release path. Compile-validated; runtime test landing in a follow-up.',
+    contractPath: 'contracts/zk/oracle-consumer.sil',
+    docPath: 'docs/patterns/zk/oracle-consumer.md',
+  },
 ];
 
 function buildCompileTestPath(entry: PatternManifestSeed): string | undefined {
@@ -279,6 +305,7 @@ function buildCompileTestPath(entry: PatternManifestSeed): string | undefined {
 }
 
 function buildRuntimeTestPath(entry: PatternManifestSeed): string | undefined {
+  if (entry.compileOnly) return undefined;
   if (entry.phase === 'core') return 'runtime-tests/tests/core_runtime.rs';
   if (entry.phase === 'krc20' && entry.id !== 'krc20.kcc20-reference') return 'runtime-tests/tests/kcc20_runtime.rs';
   if (entry.phase === 'zk-aware' && entry.status !== 'planned') return 'runtime-tests/tests/zk_runtime.rs';
@@ -288,10 +315,11 @@ function buildRuntimeTestPath(entry: PatternManifestSeed): string | undefined {
 function buildVerification(entry: PatternManifestSeed): PatternVerification {
   const compileValidated = entry.status !== 'planned' && Boolean(entry.contractPath);
   const runtimeValidated =
-    entry.phase === 'core' ||
-    (entry.phase === 'krc20' && entry.id !== 'krc20.kcc20-reference') ||
-    (entry.phase === 'zk-aware' && entry.status !== 'planned');
-  const auditChecked = Boolean(entry.contractPath) && entry.status !== 'planned';
+    !entry.compileOnly &&
+    (entry.phase === 'core' ||
+      (entry.phase === 'krc20' && entry.id !== 'krc20.kcc20-reference') ||
+      (entry.phase === 'zk-aware' && entry.status !== 'planned'));
+  const auditChecked = !entry.compileOnly && Boolean(entry.contractPath) && entry.status !== 'planned';
   const compileTestPath = buildCompileTestPath(entry);
   const runtimeTestPath = buildRuntimeTestPath(entry);
   return {

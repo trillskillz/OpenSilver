@@ -85,7 +85,11 @@ describe('opensilver CLI', () => {
       expect(exitCode).toBe(0);
       const parsed = JSON.parse(out.stdout);
       expect(Array.isArray(parsed)).toBe(true);
-      expect(parsed).toHaveLength(4); // four Phase 5 patterns in the manifest
+      // Six Phase 5 patterns: the four runtime-verified contracts
+      // (verified-computation, private-asset-transfer, zk-verified-oracle,
+      // proof-stitched-multi-pattern) plus the v2 oracle + oracle-consumer
+      // landing as compile-only scaffolds.
+      expect(parsed).toHaveLength(6);
       expect(parsed[0]).toHaveProperty('id');
       expect(parsed[0].phase).toBe('zk-aware');
     });

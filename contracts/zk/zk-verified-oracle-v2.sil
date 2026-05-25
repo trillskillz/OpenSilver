@@ -1,0 +1,145 @@
+pragma silverscript ^0.1.0;
+
+// Pattern 5.3 v2 — ZK-Verified Oracle with cross-contract output
+// binding.
+//
+// COMPILE STATUS: requires the OpenSilver Phase-5 compiler patch
+// (`npm run patch:silverc:zk`). See `contracts/zk/verified-computation.sil`
+// for the unblock-path story.
+//
+// What v2 changes vs v1:
+//   v1 (zk-verified-oracle.sil) emits a TERMINAL payout to a
+//   deploy-committed recipient. v2 emits a COVENANT-BOUND output:
+//   the publication is materialised as a new OracleConsumer UTXO
+//   (contracts/zk/oracle-consumer.sil) whose state carries the
+//   published value. Downstream consumers can subsequently redeem
+//   that UTXO, or — more interestingly — gate their own logic on
+//   the published_value.
+//
+//   The key new primitive is `validateOutputStateWithTemplate`,
+//   which pins a transaction output's scriptPubKey to a known
+//   template + a state-struct shape. This is the same mechanism
+//   the KCC20 controller family uses to bind asset outputs. v2
+//   is the first non-KCC20 use of cross-contract output binding
+//   in OpenSilver.
+//
+// Why this matters:
+//   The oracle's job is to produce a verifiable record of a
+//   computation result. A terminal payout (v1) wires that result
+//   directly into a known recipient address — fine for "the oracle
+//   triggers a release," but limited. v2 wires the result into a
+//   covenant-bound output, which means the consumer is a programmable
+//   surface: a freelance contract gated on an oracle-scored
+//   deliverable, a vesting cliff that opens when the oracle attests
+//   to a milestone, anything downstream that can read
+//   `OracleConsumer.published_value` via readInputStateWithTemplate.
+//
+// Deploy-time constants the oracle needs about the consumer:
+//   - consumer recipient (pubkey): the deploy-time recipient the
+//     consumer will pay out to. Pinned so a third party cannot
+//     substitute a different consumer covenant.
+//   - consumer template prefix/suffix/hash: the structural bytes
+//     of the compiled OracleConsumer script around the state-bytes
+//     window. Computed by compiling OracleConsumer with the
+//     deploy-time recipient pinned and extracting prefix + suffix
+//     around the state-layout offset.
+//
+//   The OpenSilver SDK will provide a helper that computes these
+//   from the consumer's compiled artifact, the same way the
+//   KCC20 controller deploy bundle does.
+
+contract ZkVerifiedOracleV2(
+    byte[] init_verifying_key,
+    pubkey init_consumer_recipient,
+    int init_threshold,
+    pubkey init_guardian1,
+    pubkey init_guardian2,
+    pubkey init_guardian3,
+    int consumerTemplatePrefixLen,
+    int consumerTemplateSuffixLen,
+    byte[32] consumerExpectedTemplateHash,
+    byte[] consumerTemplatePrefix,
+    byte[] consumerTemplateSuffix
+) {
+    byte[] verifying_key = init_verifying_key;
+    pubkey consumer_recipient = init_consumer_recipient;
+    int threshold = init_threshold;
+    pubkey guardian1 = init_guardian1;
+    pubkey guardian2 = init_guardian2;
+    pubkey guardian3 = init_guardian3;
+
+    // Mirror of OracleConsumer's state struct. Order matters — must
+    // match the field order in oracle-consumer.sil exactly, because
+    // validateOutputStateWithTemplate serialises the struct fields in
+    // declaration order to compare against the on-output state bytes.
+    struct OracleConsumerState {
+        byte[32] published_value;
+        pubkey recipient;
+    }
+
+    function requireValidConfiguration() {
+        require(threshold >= 1);
+        require(threshold <= 3);
+        require(guardian1 != guardian2);
+        require(guardian1 != guardian3);
+        require(guardian2 != guardian3);
+    }
+
+    function signerIsGuardian(pubkey candidate): bool {
+        return(candidate == guardian1 || candidate == guardian2 || candidate == guardian3);
+    }
+
+    function distinctSigners(pubkey signer1, pubkey signer2, pubkey signer3): bool {
+        return(signer1 != signer2 && signer1 != signer3 && signer2 != signer3);
+    }
+
+    function approvalCount(pubkey signer1, sig sig1, pubkey signer2, sig sig2, pubkey signer3, sig sig3): int {
+        int approvals = 0;
+        if (signerIsGuardian(signer1) && checkSig(sig1, signer1)) {
+            approvals = approvals + 1;
+        }
+        if (signerIsGuardian(signer2) && checkSig(sig2, signer2)) {
+            approvals = approvals + 1;
+        }
+        if (signerIsGuardian(signer3) && checkSig(sig3, signer3)) {
+            approvals = approvals + 1;
+        }
+        return(approvals);
+    }
+
+    // Pin output 0 to be an OracleConsumer UTXO with the proven
+    // published_value (= pi0) and the deploy-committed recipient.
+    // A caller cannot substitute a consumer with a different
+    // recipient OR a different published_value — both are checked
+    // before the template-binding call.
+    function bindConsumerOutput(OracleConsumerState consumer_new_state, byte[32] published_value) {
+        require(consumer_new_state.published_value == published_value);
+        require(consumer_new_state.recipient == consumer_recipient);
+        validateOutputStateWithTemplate(
+            0,
+            consumer_new_state,
+            consumerTemplatePrefix,
+            consumerTemplateSuffix,
+            consumerExpectedTemplateHash
+        );
+    }
+
+    entrypoint function publish(
+        pubkey signer1, sig sig1,
+        pubkey signer2, sig sig2,
+        pubkey signer3, sig sig3,
+        byte[] proof,
+        byte[32] pi0,
+        byte[32] pi1,
+        byte[32] pi2,
+        byte[32] pi3,
+        byte[32] pi4,
+        OracleConsumerState consumer_new_state
+    ) {
+        requireValidConfiguration();
+        require(distinctSigners(signer1, signer2, signer3));
+        require(approvalCount(signer1, sig1, signer2, sig2, signer3, sig3) >= threshold);
+        require(OpGroth16Verify(verifying_key, proof, [pi0, pi1, pi2, pi3, pi4]));
+        bindConsumerOutput(consumer_new_state, pi0);
+    }
+}

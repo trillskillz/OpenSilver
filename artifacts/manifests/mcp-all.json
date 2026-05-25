@@ -587,6 +587,62 @@
         "defaultMode": "compile",
         "requiresPatchedSilverc": true
       }
+    },
+    {
+      "id": "zk-aware.zk-verified-oracle-v2",
+      "title": "ZK-Verified Oracle (v2 cross-contract binding)",
+      "phase": "zk-aware",
+      "stateful": false,
+      "status": "scaffolded",
+      "compileOnly": true,
+      "summary": "v2 variant of the ZK-Verified Oracle that pins a covenant-bound consumer output via validateOutputStateWithTemplate instead of a terminal payout. First non-KCC20 use of cross-contract output binding in OpenSilver. Compile-validated; runtime test landing in a follow-up.",
+      "contractPath": "contracts/zk/zk-verified-oracle-v2.sil",
+      "docPath": "docs/patterns/zk/zk-verified-oracle-v2.md",
+      "tags": [
+        "zk-aware",
+        "stateless"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": false,
+        "auditChecked": false,
+        "auditStatus": "none",
+        "compileTestPath": "tests/zk/zk-verified-oracle-v2-compile.test.ts"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run patch:silverc:zk",
+        "defaultMode": "compile",
+        "requiresPatchedSilverc": true
+      }
+    },
+    {
+      "id": "zk-aware.oracle-consumer",
+      "title": "Oracle Consumer",
+      "phase": "zk-aware",
+      "stateful": true,
+      "status": "scaffolded",
+      "compileOnly": true,
+      "summary": "Companion covenant to the v2 ZK-Verified Oracle. Holds the published value as state and exposes a release entrypoint paying a deploy-time recipient. Downstream patterns wanting to gate on a specific oracle-published value substitute a custom release path. Compile-validated; runtime test landing in a follow-up.",
+      "contractPath": "contracts/zk/oracle-consumer.sil",
+      "docPath": "docs/patterns/zk/oracle-consumer.md",
+      "tags": [
+        "zk-aware",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": false,
+        "auditChecked": false,
+        "auditStatus": "none",
+        "compileTestPath": "tests/zk/oracle-consumer-compile.test.ts"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run patch:silverc:zk",
+        "defaultMode": "compile",
+        "requiresPatchedSilverc": true
+      }
     }
   ],
   "compilerPolicy": {
@@ -596,8 +652,8 @@
     "zkBootstrapCommand": "npm run patch:silverc:zk"
   },
   "summary": {
-    "totalPatterns": 21,
-    "requiresPatchedSilverc": 4,
+    "totalPatterns": 23,
+    "requiresPatchedSilverc": 6,
     "runtimeValidated": 20,
     "auditChecked": 21
   }
