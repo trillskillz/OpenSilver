@@ -4,11 +4,24 @@ Autonomous work picked up by the next agent run. Coordination continues, but imp
 
 ## Queue (in order)
 
+### Audit/tooling follow-through ✅ DONE 2026-05-24
+- Landed `tests/audit/audit-all-patterns.test.ts` as a repo-wide regression gate over MCP `audit_covenant` + `check_kip20_compliance`.
+- Added `AUDIT_CHECKLIST.md` as the human-readable posture companion.
+- Hardened `contracts/core/dead-man-switch.sil` to store direct `pubkey` owner/fallback state instead of hashed `byte[32]` slots, removing the same singleton-transition compiler/audit hazard already worked around in Ownable v1 / SocialRecovery.
+- Updated token-pattern docs to match actual runtime coverage and controller status.
+
+
 ### 0. Phase 2 scaffold follow-through ✅ PARTIALLY DONE 2026-05-23
+- Shared manifest follow-through advanced on 2026-05-24: `sdk/src/index.ts` now enriches every pattern entry with verification metadata (compile/runtime/audit), compiler requirements, bootstrap commands, and compile/runtime test-path pointers; CLI + MCP expose that richer surface; stale `zk-aware.private-asset-transfer` metadata was corrected to scaffolded + runtime-covered.
+- Contract-compilation hooks advanced on 2026-05-24: SDK now exports `buildPatternCompilePlan()` and CLI now supports `opensilver compile-pattern <pattern-id>`, so manifest entries are executable compile targets rather than passive catalog rows.
+- Compiler-policy propagation advanced on 2026-05-24: MCP `list_patterns` and integration manifests now carry the shared pinned-bootstrap / patched-ZK-lane policy explicitly, along with summary counts for downstream consumers.
+- Downstream export path advanced on 2026-05-24: CLI now supports `opensilver export-manifest [--consumer <wallet|ide|mcp>] [--phase <...>] [--out <path>]`, so consumers can fetch one stable machine-readable manifest artifact instead of rebuilding it themselves.
+- Canonical generated manifest artifacts now live under `artifacts/manifests/` (`mcp-all.json`, `ide-all.json`, `wallet-krc20.json`) and are refreshed with `npm run manifests:generate`; there is now a dedicated vitest guard to catch drift.
+- GitHub Actions now also runs `npm run manifests:check`, so artifact drift is blocked in CI instead of relying only on local discipline.
 - Created monorepo directories for `contracts`, `sdk`, `cli`, `mcp`, `wizard`, `integrations`, `docs`, `examples`, `tests`, and `benchmarks`.
 - Added strict TypeScript + Vitest tooling, workspace config, baseline CI, and a Docusaurus docs-site seed.
 - Added a first shared pattern-manifest/types surface in `sdk/` and wired basic consumers in CLI/MCP/Wizard/Integrations.
-- Remaining: expand the manifest schema, add contract-compilation hooks, and resolve the long-term compiler strategy tracked in GitHub issue #2 (vendor vs keep the pinned-upstream bootstrap flow from `scripts/bootstrap-silverc.sh`).
+- Remaining: continue deepening the manifest/schema and compile/tooling surfaces. The long-term compiler strategy tracked in GitHub issue #2 is now decided for v0.x: keep the pinned-upstream bootstrap flow from `scripts/bootstrap-silverc.sh`, with the ZK lane as an explicit patch overlay; see `docs/COMPILER_STRATEGY.md`.
 - Phase 3.1 has started with an `Ownable` covenant scaffold; compiler validation is in place, and next work is behavior-level tests plus deciding whether the two-step handoff is the default variant.
 - Phase 3.2 has started with a `MultiSig` scaffold over three explicit signers with a reconfiguration path; next work is behavior validation and deciding how far to push toward true N-of-M in v1.
 - Phase 3.3 has started with a `TimeLock` scaffold supporting hard/soft modes plus a forward-only extension path. Strict pre-unlock soft-cancel behavior is now enforced via `tx.locktime < unlock_time`; next work is deciding whether hashed-owner identifiers should replace raw pubkeys in state.

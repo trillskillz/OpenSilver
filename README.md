@@ -4,7 +4,7 @@ The OpenZeppelin of Kaspa. A battle-tested library of standard covenant patterns
 
 MIT licensed. Public from first commit. Currently in **Phase 0 — Ecosystem Coordination**.
 
-See `PLAN.md` for the full implementation framework. See `ECOSYSTEM_COORDINATION.md` for live status of community outreach, which now runs in parallel with implementation.
+See `PLAN.md` for the full implementation framework. See `ECOSYSTEM_COORDINATION.md` for live status of community outreach, which now runs in parallel with implementation. See `docs/COMPILER_STRATEGY.md` for the repo's chosen `silverc` packaging/bootstrap policy.
 
 ## Guiding Principles
 
@@ -35,6 +35,7 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 | `PATTERN_MAPPING.md` | Upstream examples × neighbouring ecosystems × OpenSilver V1 catalogue + DECL.md composition shapes. |
 | `KASBONDS_AUDIT.md` | Phase 1 Task 1.3 audit. Identifies promotable patterns. |
 | `docs/ecosystem/AWESOME_KASPA_SCAN.md` | Covenant-relevant scan of the broader Kaspa ecosystem from `awesome-kaspa`, with likely downstream integration targets. |
+| `docs/COMPILER_STRATEGY.md` | The chosen long-term `silverc` strategy for v0.x: pinned-upstream bootstrap by default, patched overlay for the current ZK lane. |
 | `contracts/` | SilverScript contract source tree scaffold for core, token, and later zk-aware patterns. |
 | `sdk/`, `cli/`, `mcp/`, `wizard/`, `integrations/` | Phase 2 TypeScript workspace scaffold for shared manifest/types, tooling, and integration surfaces. |
 | `docs/site/` | Docusaurus docs-site scaffold. |
@@ -62,7 +63,7 @@ npm run verify
 npm run test:runtime
 ```
 
-`npm run bootstrap:silverc` clones or refreshes the pinned upstream `kaspanet/silverscript` checkout under `upstream/silverscript/` and builds `target/debug/silverc` in-place. CI uses the same script, so local and hosted builds now share one bootstrap path.
+`npm run bootstrap:silverc` clones or refreshes the pinned upstream `kaspanet/silverscript` checkout under `upstream/silverscript/` and builds `target/debug/silverc` in-place. CI uses the same script, so local and hosted builds now share one bootstrap path. This is also the repo's chosen default compiler strategy for v0.x; see `docs/COMPILER_STRATEGY.md`.
 
 For the current Phase 5 experimental lane, `npm run patch:silverc:zk` applies OpenSilver's checked-in `OpZkPrecompile`/`OpGroth16Verify` patch to that pinned upstream checkout, rebuilds `silverc`, and smoke-tests both tracked contracts:
 - `contracts/zk/opzkprecompile-smoke.sil` — minimal builtin recognition
@@ -70,9 +71,29 @@ For the current Phase 5 experimental lane, `npm run patch:silverc:zk` applies Op
 
 That gives OpenSilver a real local compiler-probing lane while the upstream PR tracked in issue #3 settles on the final authoring surface.
 
+For downstream consumers, `opensilver export-manifest` now emits a stable machine-readable manifest artifact with compiler policy, verification metadata, and per-pattern entries. Example: `opensilver export-manifest --consumer wallet --phase krc20 --out wallet-manifest.json`.
+
+For CI/releases, canonical generated artifacts now live under `artifacts/manifests/` and can be refreshed with:
+
+```bash
+npm run manifests:generate
+```
+
+GitHub Actions also enforces that those checked-in files stay current:
+
+```bash
+npm run manifests:check
+```
+
+Tracked outputs:
+- `artifacts/manifests/mcp-all.json`
+- `artifacts/manifests/ide-all.json`
+- `artifacts/manifests/wallet-krc20.json`
+- CI drift gate: `npm run manifests:check`
+
 ## Toolchain
 
 - Upstream: `cargo test -p silverscript-lang` runs **466 tests across 21 suites with 0 failures** at the pinned upstream commit.
-- Compile suite: `npm run verify` (= `tsc -b` + `vitest`) is **31/31 files green, 75/75 tests** — one compile test per Phase-3 pattern, token scaffolds for 4.1 + 4.2 + 4.3 + 4.4 + 4.5, the shared manifest test, SDK/integration tests for KCC20 lifecycle planning, transaction-shape planning, compile/deploy spec bundles, TS-side `silverc` wrapper, deploy/broadcast assembly, Kaspa-facing transaction packages, RPC UTXO resolution, Generator/PendingTransaction stage execution, `kaspa-wasm` bindings, the MCP tool-surface tests, a missing-compiler bootstrap-hint test, AND a compile-extract-materialize end-to-end test that compiles `contracts/core/ownable.sil` with real silverc, extracts the redeem-script bytes, and materialises covenant-bound outputs to P2SH-derived addresses via a `P2shAddressDeriver` callback.
+- Compile suite: `npm run verify` (= `tsc -b` + `vitest`) is **33/33 files green, 146/146 tests** — one compile test per Phase-3 pattern, token scaffolds for 4.1 + 4.2 + 4.3 + 4.4 + 4.5, the shared manifest/audit/generated-artifact tests, SDK/integration tests for KCC20 lifecycle planning, manifest-driven compile planning, manifest export/policy propagation, transaction-shape planning, compile/deploy spec bundles, TS-side `silverc` wrapper, deploy/broadcast assembly, Kaspa-facing transaction packages, RPC UTXO resolution, Generator/PendingTransaction stage execution, `kaspa-wasm` bindings, the MCP tool-surface tests, and a compile-extract-materialize end-to-end test that compiles `contracts/core/ownable.sil` with real silverc, extracts the redeem-script bytes, and materialises covenant-bound outputs to P2SH-derived addresses via a `P2shAddressDeriver` callback.
 - Runtime suite: `npm run test:runtime` (= `cargo test --manifest-path runtime-tests/Cargo.toml`) is **70/70 green, 0 ignored** (51 core + 7 kcc20 + 12 zk; the 12 zk tests require `npm run patch:silverc:zk` first, which the CI matrix runs before cargo). Each test compiles a `.sil` contract via `silverscript-lang` and executes the redeem script in `kaspa-txscript`'s `TxScriptEngine` against a hand-built `MutableTransaction` + `UtxoEntry`. Every Phase-3 pattern now has runtime coverage on **every documented entrypoint**: TimeLock (claim/cancel/extend, including late-cancel rejection), Vault (release/extend/reconfigure/propose+accept owner transfer), BilateralEscrow (release/timeout), milestone Escrow (KIP-20 cov-id continuation), Streaming Payment (withdraw partial+terminal+forged/cancel), Vesting (claim partial+pre-cliff/revoke), HTLC (claim/refund), MultiSig (2-of-3 threshold), DMS (ping/claim via CSV), FreelancePayroll (4 paths), Ownable (propose/accept), SocialRecovery (initiate/cancel/finalize). Phase 4 runtime coverage includes **KCC20Capped**, **KCC20Pausable**, **KCC20Ownable**, and **KCC20Vesting** controllers. The SDK + integrations layer now closes the covenant-output materialization gap: `extractCompiledScript`, `describeCovenantScriptPublicKey`, `encodeConstructorArgsForSilverc` (bridges raw SDK scalars to silverc's ExprKind serde JSON), `materializeCovenantOutput` (covenant-bound outputs derive their address from compiled redeem-script bytes via a `P2shAddressDeriver` callback that the kaspa-wasm consumer wires; non-covenant outputs use the role-label fallback). All previously-tracked Phase 3/4 compiler-contract gaps and the earlier silverc-materialization limitation are now closed.
 - Phase 3.1 through 3.12 are underway with compiler-validated `contracts/core/ownable.sil`, `contracts/core/multisig.sil`, `contracts/core/timelock.sil`, `contracts/core/vault.sil`, `contracts/core/escrow-bilateral.sil`, `contracts/core/escrow-milestone.sil`, `contracts/core/streaming-payment.sil`, `contracts/core/vesting.sil`, `contracts/core/dead-man-switch.sil`, `contracts/core/social-recovery.sil`, `contracts/core/atomic-swap-htlc.sil`, and `contracts/core/freelance-payroll.sil` scaffolds, plus matching docs/tests.

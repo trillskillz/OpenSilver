@@ -11,10 +11,10 @@ DOCS_PAGES: 16 (README, PLAN, ECOSYSTEM_COORDINATION, LANGUAGE_DEEP_DIVE,
               KIP_REFERENCE, PATTERN_MAPPING, KASBONDS_AUDIT, STATUS,
               references/kips/SUMMARY, docs/ecosystem/AWESOME_KASPA_SCAN,
               docs/site/docs/intro, docs/patterns/zk/README + 4 ZK pattern designs)
-TESTS_PASSING: 466/466 upstream + 31/31 vitest files (75/75 tests) + 70/70 cargo runtime suite (51 core + 7 kcc20 + 12 zk, 0 ignored)
+TESTS_PASSING: 466/466 upstream + 33/33 vitest files (146/146 tests) + 70/70 cargo runtime suite (51 core + 7 kcc20 + 12 zk, 0 ignored)
 ECOSYSTEM_COORDINATION: reading list complete; outreach drafted (not sent — needs user), implementation no longer blocked on acknowledgement
 BLOCKERS: NONE for continuing Phase 2/3/4. Phase 5 is still blocked on the **authoring surface** for `OpZkPrecompile`: engine side is already shipped via rusty-kaspa#775, and compiler PR `kaspanet/silverscript#125` exposes the builtin name, but local prototyping showed that a 0-arg builtin alone is insufficient because SilverScript rejects raw operand-push statements. The strongest current candidate is now a structured helper with custom lowering (e.g. `OpGroth16Verify(vk, proof, [a, b, c, ...])`), which compiled successfully in a local silverscript prototype; explicit push syntax remains the broader alternative.
-NEXT_PHASE: 5 (resolve the SilverScript authoring surface around `OpZkPrecompile`, then implement Pattern 5.1 Verified Computation). The honest-limitation gap in Phase 4 (covenant-output materialization) is now closed; SDK + integrations exercise real silverc compile end-to-end.
+NEXT_PHASE: 2/5 split. Phase-2 compiler-strategy decision is now made for v0.x (pinned-upstream bootstrap default, patched overlay for current ZK lane; see `docs/COMPILER_STRATEGY.md`). Remaining practical work is deeper compile/tooling surfaces plus the upstream Phase-5 authoring-surface resolution.
 ```
 
 ## What's done
@@ -37,6 +37,13 @@ NEXT_PHASE: 5 (resolve the SilverScript authoring surface around `OpZkPrecompile
 - Updated recon docs: `LANGUAGE_DEEP_DIVE.md`, `KIP_REFERENCE.md`, `PATTERN_MAPPING.md`.
 - Added `docs/ecosystem/AWESOME_KASPA_SCAN.md` to map covenant-relevant downstream projects and Phase 11.3 outreach targets.
 - Landed initial Phase 2 scaffold: workspace directories, strict TypeScript config, Vitest, baseline CI, docs-site seed, and shared pattern-manifest surface.
+- Expanded the shared pattern manifest so CLI/MCP/integrations now expose verification metadata (compile/runtime/audit), compiler requirements (patched silverc vs pinned upstream), bootstrap commands, and test-path pointers. Also corrected `zk-aware.private-asset-transfer` from stale `planned` metadata to its actual scaffolded/runtime-covered state.
+- Added a generic manifest-driven compile hook: `buildPatternCompilePlan()` in the SDK plus CLI support via `opensilver compile-pattern <pattern-id>`, so patterns can now compile by manifest identity rather than only by raw file path.
+- Resolved the repo's v0.x compiler-strategy decision in favor of the pinned-upstream bootstrap path rather than vendoring compiler source/binaries. Decision + rationale are documented at `docs/COMPILER_STRATEGY.md`.
+- Pushed compiler-policy metadata to downstream-facing surfaces: MCP `list_patterns` now returns the shared bootstrap/patch policy, and `buildIntegrationManifest()` now includes compiler-policy + summary counts so wallet/IDE/MCP consumers can reason about setup requirements without hardcoding them.
+- Added a downstream export path: `opensilver export-manifest` now emits a stable machine-readable manifest artifact (stdout or `--out <path>`) for wallet/IDE/MCP consumers, including compiler policy and filtered pattern sets.
+- Added canonical checked-in manifest artifacts for CI/release consumers under `artifacts/manifests/` plus `npm run manifests:generate` to refresh them; regression coverage now fails if those tracked JSON artifacts drift from the SDK/integration source of truth.
+- CI now runs `npm run manifests:check`, which regenerates the canonical JSON artifacts and fails on any diff under `artifacts/manifests/`, so release-facing machine-readable exports cannot silently go stale.
 - Started Phase 3.1 Ownable with `contracts/core/ownable.sil`, `docs/patterns/core/ownable.md`, example/benchmark placeholders, and compiler-backed AST validation.
 - Started Phase 3.2 MultiSig with `contracts/core/multisig.sil`, `docs/patterns/core/multisig.md`, example placeholder, and compiler-backed AST validation.
 - TimeLock (`contracts/core/timelock.sil`) now enforces strict pre-unlock soft-cancel behavior via `tx.locktime < unlock_time`, which works around the pinned compiler snapshot's `require(tx.time >= ...)`-only grammar special-case while preserving the intended semantics.
@@ -46,6 +53,7 @@ NEXT_PHASE: 5 (resolve the SilverScript authoring surface around `OpZkPrecompile
 - Started Phase 3.7 Streaming Payment with `contracts/core/streaming-payment.sil`, `docs/patterns/core/streaming-payment.md`, example placeholder, and compiler-backed AST validation.
 - Started Phase 3.8 Vesting with `contracts/core/vesting.sil`, `docs/patterns/core/vesting.md`, example placeholder, and compiler-backed AST validation.
 - Started Phase 3.9 Dead Man's Switch with `contracts/core/dead-man-switch.sil`, `docs/patterns/core/dead-man-switch.md`, example placeholder, and compiler-backed AST validation.
+- Hardened Phase 3.9 Dead Man's Switch to store direct `pubkey` owner/fallback state instead of hashed `byte[32]` slots, removing the internal-audit/compiler hazard already eliminated from Ownable v1 / SocialRecovery.
 - Started Phase 3.10 Social Recovery with `contracts/core/social-recovery.sil`, `docs/patterns/core/social-recovery.md`, example placeholder, and compiler-backed AST validation.
 - Started Phase 3.11 Atomic Swap (HTLC) with `contracts/core/atomic-swap-htlc.sil`, `docs/patterns/core/atomic-swap-htlc.md`, example placeholder, and compiler-backed AST validation.
 - Started Phase 3.12 Freelance / Payroll with `contracts/core/freelance-payroll.sil`, `docs/patterns/core/freelance-payroll.md`, example placeholder, and compiler-backed AST validation.
@@ -147,8 +155,8 @@ All three previously-tracked gaps now closed. Runtime suite has 0 ignored tests.
   - `buildKaspaWasmPaymentOutputs`
   - `buildKaspaWasmStageExecutionPlan`
   - `createKaspaWasmGeneratorFactory`
-- Important current limitation: covenant-stage execution now uses real Kaspa address/private-key/payment-output objects, but covenant-bound outputs are still routed through role→address resolution rather than custom script/covenant output materialization from compiled `silverc` artifacts.
-- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is extracting real script/covenant output fields from non-AST `silverc` artifacts and feeding those into Kaspa transaction outputs.
+- Internal audit regression gate landed at `tests/audit/audit-all-patterns.test.ts`, with the companion human-readable posture file `AUDIT_CHECKLIST.md`. It snapshots MCP `audit_covenant` + `check_kip20_compliance` output across every production `.sil` contract and fails on unexpected drift.
+- Next major runtime/design target is Phase 4.6 `KCC20Snapshot` only if KIP-21 lane stability changes; otherwise the next practical work is deepening audit/tooling posture and SDK surfaces around the already-runtime-covered controller family.
 
 ## Phase 4 — KCC20 token patterns (current)
 
