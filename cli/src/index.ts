@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { buildIntegrationManifest } from '@opensilver/integrations';
 import {
+  buildPatternCompilePlan,
   describeCovenantScriptPublicKey,
   extractCompiledScript,
   getPatternById,
@@ -50,6 +52,8 @@ function printUsage(): void {
     '  opensilver get <pattern-id> [--json]',
     '  opensilver doc <pattern-id>',
     '  opensilver compile <file.sil> [--ast-only] [--ctor <json>] [--ctor-file <path>] [--repo-root <path>]',
+    '  opensilver compile-pattern <pattern-id> [--ast-only] [--ctor <json>] [--ctor-file <path>] [--repo-root <path>]',
+    '  opensilver export-manifest [--consumer <wallet|ide|mcp>] [--phase <core|krc20|zk-aware>] [--out <path>]',
     '  opensilver script <file.sil> [--hex] [--ctor <json>] [--ctor-file <path>] [--repo-root <path>]',
     '  opensilver help',
     '',
@@ -65,6 +69,7 @@ function printUsage(): void {
     '  opensilver list --phase krc20',
     '  opensilver get core.timelock --json',
     '  opensilver compile contracts/core/ownable.sil --ast-only',
+    '  opensilver export-manifest --consumer wallet --phase krc20 --out wallet-manifest.json',
   ].join('\n');
   process.stdout.write(usage + '\n');
 }
@@ -100,7 +105,8 @@ function readCtorArgs(flags: Record<string, string | boolean>): Array<string | n
 function formatPattern(pattern: PatternManifestEntry): string {
   const stateful = pattern.stateful ? 'stateful' : 'stateless';
   const status = pattern.status.padEnd(10);
-  return `  ${pattern.id.padEnd(38)} ${status}  ${stateful.padEnd(9)}  ${pattern.title}`;
+  const runtime = pattern.verification.runtimeValidated ? 'runtime' : pattern.verification.compileValidated ? 'compile' : 'planned';
+  return `  ${pattern.id.padEnd(38)} ${status}  ${stateful.padEnd(9)}  ${runtime.padEnd(7)}  ${pattern.title}`;
 }
 
 function cmdList(flags: Record<string, string | boolean>): number {
@@ -127,8 +133,8 @@ function cmdList(flags: Record<string, string | boolean>): number {
   const heading =
     phaseFlag && phaseFlag !== true ? `OpenSilver patterns (phase: ${phaseFlag})` : 'OpenSilver patterns';
   process.stdout.write(heading + '\n');
-  process.stdout.write(`  ${'id'.padEnd(38)} ${'status'.padEnd(10)}  ${'kind'.padEnd(9)}  title\n`);
-  process.stdout.write(`  ${'-'.repeat(38)} ${'-'.repeat(10)}  ${'-'.repeat(9)}  ${'-'.repeat(20)}\n`);
+  process.stdout.write(`  ${'id'.padEnd(38)} ${'status'.padEnd(10)}  ${'kind'.padEnd(9)}  ${'verify'.padEnd(7)}  title\n`);
+  process.stdout.write(`  ${'-'.repeat(38)} ${'-'.repeat(10)}  ${'-'.repeat(9)}  ${'-'.repeat(7)}  ${'-'.repeat(20)}\n`);
   for (const entry of entries) {
     process.stdout.write(formatPattern(entry) + '\n');
   }
@@ -154,8 +160,13 @@ function cmdGet(positionals: string[], flags: Record<string, string | boolean>):
   process.stdout.write(`  Phase:        ${entry.phase}\n`);
   process.stdout.write(`  Status:       ${entry.status}\n`);
   process.stdout.write(`  Stateful:     ${entry.stateful}\n`);
+  process.stdout.write(`  Tags:         ${entry.tags.join(', ')}\n`);
+  process.stdout.write(`  Verification: compile=${entry.verification.compileValidated} runtime=${entry.verification.runtimeValidated} audit=${entry.verification.auditStatus}\n`);
+  process.stdout.write(`  Compiler:     mode=${entry.compiler.defaultMode} patched=${entry.compiler.requiresPatchedSilverc} bootstrap=${entry.compiler.bootstrapCommand}\n`);
   if (entry.contractPath) process.stdout.write(`  Contract:     ${entry.contractPath}\n`);
   if (entry.docPath) process.stdout.write(`  Docs:         ${entry.docPath}\n`);
+  if (entry.verification.compileTestPath) process.stdout.write(`  Compile test: ${entry.verification.compileTestPath}\n`);
+  if (entry.verification.runtimeTestPath) process.stdout.write(`  Runtime test: ${entry.verification.runtimeTestPath}\n`);
   process.stdout.write(`  Summary:\n    ${entry.summary}\n`);
   return 0;
 }
@@ -221,6 +232,72 @@ function cmdCompile(positionals: string[], flags: Record<string, string | boolea
     process.stderr.write(`opensilver compile: ${(err as Error).message}\n`);
     return 1;
   }
+}
+
+function cmdCompilePattern(positionals: string[], flags: Record<string, string | boolean>): number {
+  const id = positionals[0];
+  if (!id) {
+    process.stderr.write('opensilver compile-pattern: pattern id required\n');
+    return 2;
+  }
+  const repoRoot = typeof flags['repo-root'] === 'string' ? (flags['repo-root'] as string) : process.cwd();
+  let ctorArgs: Array<string | number | boolean>;
+  try {
+    ctorArgs = readCtorArgs(flags);
+  } catch (err) {
+    process.stderr.write(`opensilver compile-pattern: ${(err as Error).message}\n`);
+    return 2;
+  }
+  try {
+    const plan = buildPatternCompilePlan(id, ctorArgs, flags['ast-only'] ? { mode: 'ast-only' } : {});
+    const result = runSilvercCompileSpec(plan.spec, { repoRoot });
+    if (result.spec.mode === 'ast-only') {
+      process.stdout.write(`ok (${result.spec.mode}): ${plan.pattern.contractPath} parses cleanly\n`);
+      return 0;
+    }
+    process.stdout.write(JSON.stringify({ pattern: plan.pattern.id, artifact: result.artifact }, null, 2) + '\n');
+    return 0;
+  } catch (err) {
+    process.stderr.write(`opensilver compile-pattern: ${(err as Error).message}\n`);
+    return 1;
+  }
+}
+
+function cmdExportManifest(flags: Record<string, string | boolean>): number {
+  const consumerFlag = flags['consumer'];
+  const phaseFlag = flags['phase'];
+  const outFlag = flags['out'];
+
+  const consumer =
+    consumerFlag === undefined || consumerFlag === true
+      ? 'mcp'
+      : consumerFlag === 'wallet' || consumerFlag === 'ide' || consumerFlag === 'mcp'
+        ? consumerFlag
+        : null;
+  if (!consumer) {
+    process.stderr.write(`opensilver export-manifest: unknown consumer ${String(consumerFlag)}\n`);
+    return 2;
+  }
+
+  let patterns: PatternManifestEntry[];
+  if (phaseFlag === undefined || phaseFlag === true) {
+    patterns = listPatterns();
+  } else if (phaseFlag === 'core' || phaseFlag === 'krc20' || phaseFlag === 'zk-aware') {
+    patterns = listPatternsByPhase(phaseFlag as PatternPhase);
+  } else {
+    process.stderr.write(`opensilver export-manifest: unknown phase ${String(phaseFlag)}\n`);
+    return 2;
+  }
+
+  const manifest = buildIntegrationManifest(consumer, patterns);
+  const json = JSON.stringify(manifest, null, 2) + '\n';
+  if (typeof outFlag === 'string') {
+    writeFileSync(outFlag, json, 'utf8');
+    process.stdout.write(`${outFlag}\n`);
+    return 0;
+  }
+  process.stdout.write(json);
+  return 0;
 }
 
 function cmdScript(positionals: string[], flags: Record<string, string | boolean>): number {
@@ -296,6 +373,10 @@ export function runCli(argv: string[]): number {
       return cmdDoc(parsed.positionals);
     case 'compile':
       return cmdCompile(parsed.positionals, parsed.flags);
+    case 'compile-pattern':
+      return cmdCompilePattern(parsed.positionals, parsed.flags);
+    case 'export-manifest':
+      return cmdExportManifest(parsed.flags);
     case 'script':
       return cmdScript(parsed.positionals, parsed.flags);
     default:

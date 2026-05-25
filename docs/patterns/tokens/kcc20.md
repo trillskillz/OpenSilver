@@ -70,7 +70,7 @@ Every stateful transition in KCC20 stays inside the same covenant-id lineage via
 
 ## Runtime coverage
 
-Compile-validated via `tests/tokens/kcc20-compile.test.ts`. End-to-end runtime tests against `kaspa-txscript` are deferred to the next pass — they require setting up the multi-input N:M transfer shape with `readInputStateWithTemplate` plumbing, which is a heavier harness build-out than the singleton-transition tests already in `runtime-tests/`.
+Compile-validated via `tests/tokens/kcc20-compile.test.ts`. Full end-to-end asset-transfer runtime coverage is still deferred because it needs the heavier multi-input N:M transfer harness, but the shared KCC20 lifecycle around this asset is already exercised indirectly by the controller runtime suites (`runtime-tests/tests/kcc20_runtime.rs`).
 
 ## Audit status
 

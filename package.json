@@ -20,6 +20,8 @@
     "clean": "rm -rf sdk/dist cli/dist mcp/dist wizard/dist integrations/dist coverage docs/site/.docusaurus",
     "docs:build": "npm run build --workspace @opensilver/docs-site",
     "docs:start": "npm run start --workspace @opensilver/docs-site",
+    "manifests:generate": "npm run build && node scripts/generate-manifest-artifacts.mjs",
+    "manifests:check": "npm run manifests:generate && git diff --exit-code -- artifacts/manifests",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:runtime": "cargo test --manifest-path runtime-tests/Cargo.toml",

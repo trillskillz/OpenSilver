@@ -5,10 +5,10 @@ Six patterns. The headline architectural rule, lifted from the upstream KCC20 bo
 | Slot | Pattern | Asset contract | Controller covenant | Status |
 | --- | --- | --- | --- | --- |
 | 4.1 | KCC20 reference | `contracts/tokens/kcc20.sil` | (controller is pluggable) | Scaffolded; compile-validated |
-| 4.2 | KCC20Ownable | (4.1 reused) | TODO `contracts/tokens/kcc20-ownable.sil` | Stub doc only |
-| 4.3 | KCC20Pausable | (4.1 reused) | TODO `contracts/tokens/kcc20-pausable.sil` | Stub doc only |
-| 4.4 | KCC20Capped | (4.1 reused) | TODO `contracts/tokens/kcc20-capped.sil` | Stub doc only |
-| 4.5 | KCC20Vesting | (4.1 reused) | TODO `contracts/tokens/kcc20-vesting.sil` | Stub doc only |
+| 4.2 | KCC20Ownable | (4.1 reused) | `contracts/tokens/kcc20-ownable.sil` | Scaffolded; runtime-covered |
+| 4.3 | KCC20Pausable | (4.1 reused) | `contracts/tokens/kcc20-pausable.sil` | Scaffolded; runtime-covered |
+| 4.4 | KCC20Capped | (4.1 reused) | `contracts/tokens/kcc20-capped.sil` | Scaffolded; runtime-covered |
+| 4.5 | KCC20Vesting | (4.1 reused) | `contracts/tokens/kcc20-vesting.sil` | Scaffolded; runtime-covered |
 | 4.6 | KCC20Snapshot | (touches the asset; deferred to KIP-21 lane stability) | — | Stub doc only |
 
 The asset contract is stable across 4.2-4.5; the only difference between those variants is the controller covenant they bind to. The repo now also has SDK glue in `sdk/src/index.ts` for selecting controller paths, normalizing controller state, building constructor args, planning the three-phase KCC20 lifecycle, describing the concrete transaction shapes for controller genesis/asset genesis/mint flows, emitting compile/deploy spec bundles against the pinned `silverc` binary, invoking that compiler from TypeScript, assembling deploy-ready compiled flow objects, mapping them into broadcast-ready transaction assembly inputs, and converting those into Kaspa-facing transaction packages, RPC-backed builder requests, concrete Generator/PendingTransaction execution plans, and direct `kaspa-wasm` payment/signer bindings in `integrations/`.

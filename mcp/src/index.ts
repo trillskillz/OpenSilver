@@ -34,12 +34,27 @@ export type McpCategory = PatternPhase | 'all';
 export interface ListPatternsResponse {
   patterns: PatternManifestEntry[];
   count: number;
+  compilerPolicy: {
+    strategy: 'pinned-upstream-bootstrap';
+    zkLane: 'patched-overlay';
+    defaultBootstrapCommand: 'npm run bootstrap:silverc';
+    zkBootstrapCommand: 'npm run patch:silverc:zk';
+  };
 }
 
 export function listPatternsTool(category?: McpCategory): ListPatternsResponse {
   const patterns =
     !category || category === 'all' ? listPatterns() : listPatternsByPhase(category as PatternPhase);
-  return { patterns, count: patterns.length };
+  return {
+    patterns,
+    count: patterns.length,
+    compilerPolicy: {
+      strategy: 'pinned-upstream-bootstrap',
+      zkLane: 'patched-overlay',
+      defaultBootstrapCommand: 'npm run bootstrap:silverc',
+      zkBootstrapCommand: 'npm run patch:silverc:zk',
+    },
+  };
 }
 
 // ─── Tool 2: get_pattern ────────────────────────────────────────────────────
@@ -386,7 +401,7 @@ export function getToolCatalog(): ToolCatalog {
     tools: [
       {
         name: 'list_patterns',
-        description: 'List OpenSilver covenant patterns. Optional category filter: core | krc20 | zk-aware | all.',
+        description: 'List OpenSilver covenant patterns. Optional category filter: core | krc20 | zk-aware | all. Response includes compiler/bootstrap policy and per-pattern verification/compiler metadata.',
         schema: { input: { category: 'McpCategory?' }, output: 'ListPatternsResponse' },
       },
       {

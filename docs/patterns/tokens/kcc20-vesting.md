@@ -65,7 +65,7 @@ Single-recipient vesting mint path. Checks:
 
 ## Current limitations
 
-- No runtime harness coverage yet.
+- Runtime-covered for pre-cliff rejection plus first/second/final mint phases, but not yet stressed under broader multi-input KCC20 transfer compositions.
 - No termination path; fully-drained schedules remain as inert controller states.
 - No pause/cap composition in this first version.
 - No explicit controller-output value accounting yet; this scaffold focuses on issuance-schedule accounting and templated KCC20-output validation.

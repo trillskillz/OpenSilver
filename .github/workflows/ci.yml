@@ -24,5 +24,7 @@ jobs:
         run: npm install
       - name: Typecheck
         run: npm run typecheck
+      - name: Check generated manifest artifacts
+        run: npm run manifests:check
       - name: Test
         run: npm test

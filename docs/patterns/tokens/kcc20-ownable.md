@@ -76,7 +76,7 @@ Pending admin transfer does **not** pause minting: until `accept_admin_transfer`
 
 ## Current limitations
 
-- No runtime harness coverage yet.
+- Runtime-covered for init/admin-transfer/mint flows, but not yet stressed under broader multi-input KCC20 transfer compositions.
 - No combined pause/cap/ownable controller; this is intentionally a single-policy scaffold.
 - No explicit controller-output value accounting yet; this scaffold focuses on authority rotation and templated KCC20-output validation.
 

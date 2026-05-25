@@ -20,11 +20,16 @@ describe('OpenSilver MCP tool surface', () => {
     const core = listPatternsTool('core');
 
     expect(all.count).toBeGreaterThan(core.count);
+    expect(all.compilerPolicy.strategy).toBe('pinned-upstream-bootstrap');
+    expect(all.compilerPolicy.zkBootstrapCommand).toBe('npm run patch:silverc:zk');
     expect(core.patterns.every((pattern) => pattern.phase === 'core')).toBe(true);
+    expect(all.patterns.some((pattern) => pattern.compiler.requiresPatchedSilverc)).toBe(true);
+    expect(core.patterns.every((pattern) => pattern.verification.runtimeValidated)).toBe(true);
   });
 
   it('returns one pattern by id and null for an unknown id', () => {
     expect(getPatternTool('core.ownable').pattern?.id).toBe('core.ownable');
+    expect(getPatternTool('zk-aware.private-asset-transfer').pattern?.contractPath).toBe('contracts/zk/private-asset-transfer.sil');
     expect(getPatternTool('missing.pattern')).toEqual({ pattern: null, notFound: { id: 'missing.pattern' } });
   });
 

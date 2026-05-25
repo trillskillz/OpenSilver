@@ -11,16 +11,47 @@ import {
 
 const require = createRequire(import.meta.url);
 
+export interface IntegrationCompilerPolicy {
+  strategy: 'pinned-upstream-bootstrap';
+  zkLane: 'patched-overlay';
+  defaultBootstrapCommand: 'npm run bootstrap:silverc';
+  zkBootstrapCommand: 'npm run patch:silverc:zk';
+}
+
+export interface IntegrationManifestSummary {
+  totalPatterns: number;
+  requiresPatchedSilverc: number;
+  runtimeValidated: number;
+  auditChecked: number;
+}
+
 export interface IntegrationManifest {
   consumer: 'wallet' | 'ide' | 'mcp';
   patterns: PatternManifestEntry[];
+  compilerPolicy: IntegrationCompilerPolicy;
+  summary: IntegrationManifestSummary;
 }
 
 export function buildIntegrationManifest(
   consumer: IntegrationManifest['consumer'],
   patterns: PatternManifestEntry[],
 ): IntegrationManifest {
-  return { consumer, patterns };
+  return {
+    consumer,
+    patterns,
+    compilerPolicy: {
+      strategy: 'pinned-upstream-bootstrap',
+      zkLane: 'patched-overlay',
+      defaultBootstrapCommand: 'npm run bootstrap:silverc',
+      zkBootstrapCommand: 'npm run patch:silverc:zk',
+    },
+    summary: {
+      totalPatterns: patterns.length,
+      requiresPatchedSilverc: patterns.filter((pattern) => pattern.compiler.requiresPatchedSilverc).length,
+      runtimeValidated: patterns.filter((pattern) => pattern.verification.runtimeValidated).length,
+      auditChecked: patterns.filter((pattern) => pattern.verification.auditChecked).length,
+    },
+  };
 }
 
 export interface KaspaBuilderInput {

@@ -1,0 +1,156 @@
+{
+  "consumer": "wallet",
+  "patterns": [
+    {
+      "id": "krc20.kcc20-reference",
+      "title": "KCC20 reference",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Stable KCC20 asset contract with three ownership modes and non-minter supply-conservation invariants.",
+      "contractPath": "contracts/tokens/kcc20.sil",
+      "docPath": "docs/patterns/tokens/kcc20.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": false,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-compile.test.ts"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-ownable",
+      "title": "KCC20Ownable",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Controller covenant that rotates KCC20 mint authority through an Ownable-style two-step admin handoff.",
+      "contractPath": "contracts/tokens/kcc20-ownable.sil",
+      "docPath": "docs/patterns/tokens/kcc20-ownable.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-ownable-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/kcc20_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-pausable",
+      "title": "KCC20Pausable",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Controller covenant that halts new KCC20 issuance while paused without freezing existing holder transfers.",
+      "contractPath": "contracts/tokens/kcc20-pausable.sil",
+      "docPath": "docs/patterns/tokens/kcc20-pausable.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-pausable-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/kcc20_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-capped",
+      "title": "KCC20Capped",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Controller covenant that caps KCC20 issuance through a decremented remaining-allowance state budget.",
+      "contractPath": "contracts/tokens/kcc20-capped.sil",
+      "docPath": "docs/patterns/tokens/kcc20-capped.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-capped-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/kcc20_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-vesting",
+      "title": "KCC20Vesting",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Controller covenant that releases KCC20 issuance on a beneficiary-signed vesting schedule.",
+      "contractPath": "contracts/tokens/kcc20-vesting.sil",
+      "docPath": "docs/patterns/tokens/kcc20-vesting.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-vesting-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/kcc20_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    }
+  ],
+  "compilerPolicy": {
+    "strategy": "pinned-upstream-bootstrap",
+    "zkLane": "patched-overlay",
+    "defaultBootstrapCommand": "npm run bootstrap:silverc",
+    "zkBootstrapCommand": "npm run patch:silverc:zk"
+  },
+  "summary": {
+    "totalPatterns": 5,
+    "requiresPatchedSilverc": 0,
+    "runtimeValidated": 4,
+    "auditChecked": 5
+  }
+}

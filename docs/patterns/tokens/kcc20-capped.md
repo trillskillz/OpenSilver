@@ -69,7 +69,7 @@ Checks enforced:
 
 ## Current limitations
 
-- No runtime harness coverage yet for the full controller + asset genesis lifecycle.
+- Runtime-covered for init/happy-path mint/over-cap reject, but not yet stressed under broader multi-input KCC20 transfer compositions.
 - No batching: one recipient branch per mint call.
 - No admin rotation: this is intentionally the simplest controller variant first.
 - No explicit output-value accounting on the controller UTXO itself yet; the main safety property here is issuance-budget accounting plus templated KCC20-output validation.

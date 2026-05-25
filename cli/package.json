@@ -9,6 +9,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
+    "@opensilver/integrations": "0.1.0",
     "@opensilver/sdk": "0.1.0"
   },
   "scripts": {

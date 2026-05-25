@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { listPatterns } from '../sdk/src/index.js';
+import { buildPatternCompilePlan, listPatterns } from '../sdk/src/index.js';
 
 describe('pattern manifest scaffold', () => {
   it('exposes the first core entries and marks Ownable as scaffolded', () => {
@@ -9,6 +9,11 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[0]?.status).toBe('scaffolded');
     expect(patterns[0]?.contractPath).toBe('contracts/core/ownable.sil');
     expect(patterns[0]?.docPath).toBe('docs/patterns/core/ownable.md');
+    expect(patterns[0]?.verification.compileValidated).toBe(true);
+    expect(patterns[0]?.verification.runtimeValidated).toBe(true);
+    expect(patterns[0]?.verification.auditStatus).toBe('internal-regression-gated');
+    expect(patterns[0]?.compiler.requiresPatchedSilverc).toBe(false);
+    expect(patterns[0]?.compiler.bootstrapCommand).toBe('npm run bootstrap:silverc');
     expect(patterns[1]?.id).toBe('core.multisig');
     expect(patterns[1]?.status).toBe('scaffolded');
     expect(patterns[2]?.id).toBe('core.timelock');
@@ -41,5 +46,18 @@ describe('pattern manifest scaffold', () => {
     expect(patterns[15]?.status).toBe('scaffolded');
     expect(patterns[16]?.id).toBe('krc20.kcc20-vesting');
     expect(patterns[16]?.status).toBe('scaffolded');
+
+    const privateAssetTransfer = patterns.find((pattern) => pattern.id === 'zk-aware.private-asset-transfer');
+    expect(privateAssetTransfer?.status).toBe('scaffolded');
+    expect(privateAssetTransfer?.contractPath).toBe('contracts/zk/private-asset-transfer.sil');
+    expect(privateAssetTransfer?.compiler.requiresPatchedSilverc).toBe(true);
+    expect(privateAssetTransfer?.compiler.bootstrapCommand).toBe('npm run patch:silverc:zk');
+    expect(privateAssetTransfer?.verification.runtimeValidated).toBe(true);
+
+    const compilePlan = buildPatternCompilePlan('zk-aware.private-asset-transfer');
+    expect(compilePlan.pattern.id).toBe('zk-aware.private-asset-transfer');
+    expect(compilePlan.spec.contractPath).toBe('contracts/zk/private-asset-transfer.sil');
+    expect(compilePlan.spec.mode).toBe('compile');
+    expect(compilePlan.bootstrapCommand).toBe('npm run patch:silverc:zk');
   });
 });

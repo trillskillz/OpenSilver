@@ -4,19 +4,52 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 export type PatternPhase = 'core' | 'krc20' | 'zk-aware';
+export type PatternStatus = 'planned' | 'scaffolded' | 'implemented' | 'audited';
+export type PatternAuditStatus = 'none' | 'internal-regression-gated' | 'external-audit-pending' | 'externally-audited';
+
+export interface PatternVerification {
+  compileValidated: boolean;
+  runtimeValidated: boolean;
+  auditChecked: boolean;
+  auditStatus: PatternAuditStatus;
+  compileTestPath?: string;
+  runtimeTestPath?: string;
+}
+
+export interface PatternCompilerSupport {
+  bootstrap: 'pinned-upstream';
+  bootstrapCommand: 'npm run bootstrap:silverc' | 'npm run patch:silverc:zk';
+  defaultMode: 'ast-only' | 'compile';
+  requiresPatchedSilverc: boolean;
+}
 
 export interface PatternManifestEntry {
   id: string;
   title: string;
   phase: PatternPhase;
   stateful: boolean;
-  status: 'planned' | 'scaffolded' | 'implemented' | 'audited';
+  status: PatternStatus;
   summary: string;
   contractPath?: string;
   docPath?: string;
+  tags: string[];
+  verification: PatternVerification;
+  compiler: PatternCompilerSupport;
 }
 
-export const patternManifest: PatternManifestEntry[] = [
+interface PatternManifestSeed {
+  id: string;
+  title: string;
+  phase: PatternPhase;
+  stateful: boolean;
+  status: PatternStatus;
+  summary: string;
+  contractPath?: string;
+  docPath?: string;
+  tags?: string[];
+}
+
+const patternManifestSeeds: PatternManifestSeed[] = [
   {
     id: 'core.ownable',
     title: 'Ownable',
@@ -202,8 +235,9 @@ export const patternManifest: PatternManifestEntry[] = [
     title: 'Private Asset Transfer',
     phase: 'zk-aware',
     stateful: true,
-    status: 'planned',
-    summary: 'Commitment + nullifier accumulator + Groth16 verification for confidential transfers; trust model is selective-disclosure.',
+    status: 'scaffolded',
+    summary: 'Commitment-root + recipient-pinned Groth16 covenant for confidential transfers. v1 is covenant-side only; nullifier-accumulator/stateful follow-up remains open.',
+    contractPath: 'contracts/zk/private-asset-transfer.sil',
     docPath: 'docs/patterns/zk/private-asset-transfer.md',
   },
   {
@@ -228,6 +262,68 @@ export const patternManifest: PatternManifestEntry[] = [
   },
 ];
 
+function buildCompileTestPath(entry: PatternManifestSeed): string | undefined {
+  if (!entry.contractPath) return undefined;
+  if (entry.phase === 'core') {
+    return `tests/${entry.id.replace('core.', '')}-compile.test.ts`;
+  }
+  if (entry.phase === 'krc20') {
+    const name = entry.contractPath.split('/').pop()?.replace('.sil', '');
+    return name ? `tests/tokens/${name}-compile.test.ts` : undefined;
+  }
+  if (entry.phase === 'zk-aware') {
+    const name = entry.contractPath.split('/').pop()?.replace('.sil', '');
+    return name ? `tests/zk/${name}-compile.test.ts` : undefined;
+  }
+  return undefined;
+}
+
+function buildRuntimeTestPath(entry: PatternManifestSeed): string | undefined {
+  if (entry.phase === 'core') return 'runtime-tests/tests/core_runtime.rs';
+  if (entry.phase === 'krc20' && entry.id !== 'krc20.kcc20-reference') return 'runtime-tests/tests/kcc20_runtime.rs';
+  if (entry.phase === 'zk-aware' && entry.status !== 'planned') return 'runtime-tests/tests/zk_runtime.rs';
+  return undefined;
+}
+
+function buildVerification(entry: PatternManifestSeed): PatternVerification {
+  const compileValidated = entry.status !== 'planned' && Boolean(entry.contractPath);
+  const runtimeValidated =
+    entry.phase === 'core' ||
+    (entry.phase === 'krc20' && entry.id !== 'krc20.kcc20-reference') ||
+    (entry.phase === 'zk-aware' && entry.status !== 'planned');
+  const auditChecked = Boolean(entry.contractPath) && entry.status !== 'planned';
+  const compileTestPath = buildCompileTestPath(entry);
+  const runtimeTestPath = buildRuntimeTestPath(entry);
+  return {
+    compileValidated,
+    runtimeValidated,
+    auditChecked,
+    auditStatus: auditChecked ? 'internal-regression-gated' : 'none',
+    ...(compileTestPath ? { compileTestPath } : {}),
+    ...(runtimeTestPath ? { runtimeTestPath } : {}),
+  };
+}
+
+function buildCompilerSupport(entry: PatternManifestSeed): PatternCompilerSupport {
+  return {
+    bootstrap: 'pinned-upstream',
+    bootstrapCommand: entry.phase === 'zk-aware' ? 'npm run patch:silverc:zk' : 'npm run bootstrap:silverc',
+    defaultMode: entry.phase === 'zk-aware' ? 'compile' : 'ast-only',
+    requiresPatchedSilverc: entry.phase === 'zk-aware',
+  };
+}
+
+function enrichPattern(entry: PatternManifestSeed): PatternManifestEntry {
+  return {
+    ...entry,
+    tags: entry.tags ?? [entry.phase, entry.stateful ? 'stateful' : 'stateless'],
+    verification: buildVerification(entry),
+    compiler: buildCompilerSupport(entry),
+  };
+}
+
+export const patternManifest: PatternManifestEntry[] = patternManifestSeeds.map(enrichPattern);
+
 export function listPatterns(): PatternManifestEntry[] {
   return [...patternManifest];
 }
@@ -238,6 +334,35 @@ export function listPatternsByPhase(phase: PatternPhase): PatternManifestEntry[]
 
 export function getPatternById(id: string): PatternManifestEntry | undefined {
   return patternManifest.find((pattern) => pattern.id === id);
+}
+
+export interface PatternCompilePlan {
+  pattern: PatternManifestEntry;
+  spec: SilvercCompileSpec;
+  bootstrapCommand: PatternCompilerSupport['bootstrapCommand'];
+}
+
+export function buildPatternCompilePlan(
+  id: string,
+  constructorArgs: Array<string | number | boolean> = [],
+  options: { silvercBinary?: string; mode?: 'ast-only' | 'compile' } = {},
+): PatternCompilePlan {
+  const pattern = getPatternById(id);
+  if (!pattern) {
+    throw new Error(`unknown pattern id: ${id}`);
+  }
+  if (!pattern.contractPath) {
+    throw new Error(`pattern ${id} has no contractPath`);
+  }
+  const mode = options.mode ?? pattern.compiler.defaultMode;
+  return {
+    pattern,
+    bootstrapCommand: pattern.compiler.bootstrapCommand,
+    spec: buildSilvercCompileSpec(pattern.contractPath, constructorArgs, {
+      ...(options.silvercBinary ? { silvercBinary: options.silvercBinary } : {}),
+      mode,
+    }),
+  };
 }
 
 export const KCC20_IDENTIFIER_TYPE = {

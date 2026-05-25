@@ -67,7 +67,7 @@ Single-recipient mint path. Checks:
 
 ## Current limitations
 
-- No runtime harness coverage yet.
+- Runtime-covered for pause/unpause/paused-mint rejection, but not yet stressed under broader multi-input KCC20 transfer compositions.
 - No admin rotation; admin is a constructor constant in this first scaffold.
 - No cumulative-pause-duration or cooldown policy.
 - No explicit controller-output value accounting yet; this scaffold focuses on issuance gating and templated KCC20-output validation.

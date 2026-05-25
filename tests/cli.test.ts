@@ -1,4 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { runCli } from '@opensilver/cli';
 
 interface CapturedOutput {
@@ -95,6 +98,8 @@ describe('opensilver CLI', () => {
       expect(out.stdout).toContain('TimeLock (core.timelock)');
       expect(out.stdout).toContain('Phase:        core');
       expect(out.stdout).toContain('Stateful:     true');
+      expect(out.stdout).toContain('Verification: compile=true runtime=true audit=internal-regression-gated');
+      expect(out.stdout).toContain('Compiler:     mode=ast-only patched=false bootstrap=npm run bootstrap:silverc');
       expect(out.stdout).toContain('contracts/core/timelock.sil');
     });
 
@@ -156,6 +161,59 @@ describe('opensilver CLI', () => {
       ]);
       expect(exitCode).toBe(0);
       expect(out.stdout).toContain('ok (ast-only)');
+    });
+  });
+
+  describe('compile-pattern', () => {
+    it('compiles a manifest pattern by id using its contract path', () => {
+      const { exitCode, out } = captureCli([
+        'compile-pattern',
+        'core.ownable',
+        '--ast-only',
+        '--repo-root',
+        repoRoot,
+      ]);
+      expect(exitCode).toBe(0);
+      expect(out.stdout).toContain('contracts/core/ownable.sil parses cleanly');
+    });
+
+    it('returns 1 for unknown pattern ids', () => {
+      const { exitCode, out } = captureCli(['compile-pattern', 'no.such.pattern', '--repo-root', repoRoot]);
+      expect(exitCode).toBe(1);
+      expect(out.stderr).toContain('unknown pattern id');
+    });
+  });
+
+  describe('export-manifest', () => {
+    it('emits a machine-readable integration manifest to stdout', () => {
+      const { exitCode, out } = captureCli(['export-manifest', '--consumer', 'wallet', '--phase', 'krc20']);
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(out.stdout);
+      expect(parsed.consumer).toBe('wallet');
+      expect(parsed.compilerPolicy.strategy).toBe('pinned-upstream-bootstrap');
+      expect(parsed.summary.totalPatterns).toBe(5);
+      expect(parsed.patterns.every((pattern: { phase: string }) => pattern.phase === 'krc20')).toBe(true);
+    });
+
+    it('writes the manifest artifact to disk when --out is passed', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'opensilver-manifest-'));
+      try {
+        const outPath = join(dir, 'manifest.json');
+        const { exitCode, out } = captureCli(['export-manifest', '--out', outPath]);
+        expect(exitCode).toBe(0);
+        expect(out.stdout.trim()).toBe(outPath);
+        const parsed = JSON.parse(readFileSync(outPath, 'utf8'));
+        expect(parsed.consumer).toBe('mcp');
+        expect(parsed.summary.totalPatterns).toBeGreaterThan(0);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('rejects unknown consumer values', () => {
+      const { exitCode, out } = captureCli(['export-manifest', '--consumer', 'nope']);
+      expect(exitCode).toBe(2);
+      expect(out.stderr).toContain('unknown consumer');
     });
   });
 

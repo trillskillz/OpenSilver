@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildKcc20BroadcastReadyFlow, buildKcc20DeployFlow } from '../sdk/src/index.js';
-import { buildKaspaKcc20TransactionPackage } from '../integrations/src/index.js';
+import { buildKcc20BroadcastReadyFlow, buildKcc20DeployFlow, listPatternsByPhase } from '../sdk/src/index.js';
+import { buildIntegrationManifest, buildKaspaKcc20TransactionPackage } from '../integrations/src/index.js';
 
 const template = {
   prefixLength: 12,
@@ -11,6 +11,17 @@ const template = {
 };
 
 describe('kcc20 integrations', () => {
+  it('builds an integration manifest with compiler-policy summary', () => {
+    const manifest = buildIntegrationManifest('wallet', listPatternsByPhase('krc20'));
+    expect(manifest.consumer).toBe('wallet');
+    expect(manifest.compilerPolicy.strategy).toBe('pinned-upstream-bootstrap');
+    expect(manifest.compilerPolicy.zkLane).toBe('patched-overlay');
+    expect(manifest.summary.totalPatterns).toBe(5);
+    expect(manifest.summary.requiresPatchedSilverc).toBe(0);
+    expect(manifest.summary.runtimeValidated).toBe(4);
+    expect(manifest.summary.auditChecked).toBe(5);
+  });
+
   it('maps a broadcast-ready flow into a Kaspa transaction package', () => {
     const repoRoot = process.cwd();
     const deployFlow = buildKcc20DeployFlow<Record<string, unknown>>(
