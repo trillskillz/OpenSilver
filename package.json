@@ -22,6 +22,8 @@
     "docs:start": "npm run start --workspace @opensilver/docs-site",
     "manifests:generate": "npm run build && node scripts/generate-manifest-artifacts.mjs",
     "manifests:check": "npm run manifests:generate && git diff --exit-code -- artifacts/manifests",
+    "wizard:build": "npm run manifests:generate && node wizard/src/build.mjs",
+    "wizard:check": "npm run wizard:build && git diff --exit-code -- wizard/build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:runtime": "cargo test --manifest-path runtime-tests/Cargo.toml",

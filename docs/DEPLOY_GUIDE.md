@@ -175,6 +175,22 @@ console.log('Broadcast tx:', txid);
 
 Watch the spend on the [Kaspa TN12 explorer](https://explorer-tn12.kaspa.org/) (URL varies; check `awesome-kaspa` for current options). For ongoing covenants (Vault, Streaming Payment, etc.), each state transition is its own transaction with a fresh sigscript selecting the next entrypoint.
 
+## Browse patterns visually (Web Wizard)
+
+If you'd rather pick a pattern from a UI before reaching for the CLI:
+
+```bash
+npm run wizard:build
+xdg-open wizard/build/index.html   # or open / start, depending on OS
+```
+
+The wizard is a single static HTML file with the IDE manifest inlined.
+Filter by phase, inspect each pattern's verification + compiler posture,
+and copy ready-to-run `opensilver get` / `opensilver deploy-plan`
+commands directly from the detail pane. There are no external runtime
+dependencies, so the page also serves cleanly from any static host or
+file system path.
+
 ## Known limitations
 
 - **Phase-5 patterns require the patch lane** (`npm run patch:silverc:zk`). The deploy plan's `compiler.requiresPatchedSilverc` flag is `true` for these; the `networkHints` includes the bootstrap reminder.

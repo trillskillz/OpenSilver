@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OpenSilver Wizard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0c0d10;
+    --fg: #e8e9eb;
+    --muted: #8a8d92;
+    --accent: #6cc7c5;
+    --warn: #e8b15a;
+    --error: #e88a8a;
+    --panel: #14161a;
+    --border: #23262c;
+    --code-bg: #181a1f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 16px; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header .subtitle { color: var(--muted); font-size: 13px; }
+  header .meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+  main { display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 57px); }
+  aside { border-right: 1px solid var(--border); overflow-y: auto; }
+  aside .filter { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; }
+  aside .filter button {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  aside .filter button.active { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  aside ul { list-style: none; padding: 0; margin: 0; }
+  aside li {
+    padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  aside li:hover { background: var(--panel); }
+  aside li.active { background: var(--panel); border-left: 3px solid var(--accent); padding-left: 13px; }
+  aside li .id { font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; }
+  aside li .title { font-weight: 600; }
+  aside li .status { font-size: 11px; color: var(--muted); }
+  aside li .status.scaffolded { color: var(--accent); }
+  aside li .status.planned { color: var(--warn); }
+  section.detail { padding: 24px 32px; overflow-y: auto; }
+  section.detail h2 { margin: 0 0 8px; font-size: 22px; }
+  section.detail .badges { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: ui-monospace, monospace;
+    background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+  }
+  .badge.compile-ok, .badge.runtime-ok, .badge.audit-ok { color: var(--accent); border-color: var(--accent); }
+  .badge.compile-no, .badge.runtime-no, .badge.audit-no { color: var(--warn); border-color: var(--warn); }
+  section.detail .summary { margin: 0 0 24px; color: var(--fg); }
+  section.detail h3 { margin: 24px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  section.detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; font-size: 13px; }
+  section.detail dt { color: var(--muted); }
+  section.detail code { background: var(--code-bg); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+  section.detail pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+  section.detail .notice { background: var(--panel); border-left: 3px solid var(--warn); padding: 10px 14px; margin: 16px 0; font-size: 13px; }
+  section.detail .notice.error { border-left-color: var(--error); }
+  section.detail .empty { color: var(--muted); padding: 80px 0; text-align: center; font-style: italic; }
+  section.detail .links a { color: var(--accent); text-decoration: none; margin-right: 16px; font-size: 13px; }
+  section.detail .links a:hover { text-decoration: underline; }
+  footer { padding: 12px 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+  footer .compiler { font-family: ui-monospace, monospace; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenSilver Wizard</h1>
+  <span class="subtitle">Browse, inspect, and copy deploy commands for OpenSilver covenant patterns.</span>
+  <span class="meta" id="meta"></span>
+</header>
+<main>
+  <aside>
+    <div class="filter" id="filter">
+      <button data-phase="all" class="active">all</button>
+      <button data-phase="core">core</button>
+      <button data-phase="krc20">krc20</button>
+      <button data-phase="zk-aware">zk-aware</button>
+    </div>
+    <ul id="pattern-list"></ul>
+  </aside>
+  <section class="detail" id="detail">
+    <p class="empty">Select a pattern on the left.</p>
+  </section>
+</main>
+<footer>
+  <span>Compiler strategy: <span class="compiler" id="compiler"></span></span>
+  <span style="margin-left:24px">Need to deploy? See <a href="../docs/DEPLOY_GUIDE.md">docs/DEPLOY_GUIDE.md</a></span>
+</footer>
+<script>
+  const MANIFEST = /*OPENSILVER_MANIFEST_INJECT*/;
+  const filterBar = document.getElementById('filter');
+  const listEl = document.getElementById('pattern-list');
+  const detailEl = document.getElementById('detail');
+  const metaEl = document.getElementById('meta');
+  const compilerEl = document.getElementById('compiler');
+  let currentPhase = 'all';
+  let currentId = null;
+
+  function statusBadge(status) {
+    const ok = status === 'scaffolded' || status === 'implemented' || status === 'audited';
+    return `<span class="badge ${ok ? 'compile-ok' : ''}">${status}</span>`;
+  }
+
+  function verifBadges(v) {
+    return [
+      `<span class="badge ${v.compileValidated ? 'compile-ok' : 'compile-no'}">compile ${v.compileValidated ? '✓' : '–'}</span>`,
+      `<span class="badge ${v.runtimeValidated ? 'runtime-ok' : 'runtime-no'}">runtime ${v.runtimeValidated ? '✓' : '–'}</span>`,
+      `<span class="badge ${v.auditChecked ? 'audit-ok' : 'audit-no'}">audit ${v.auditChecked ? '✓' : '–'}</span>`,
+    ].join('');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
+  function renderList() {
+    const patterns = currentPhase === 'all'
+      ? MANIFEST.patterns
+      : MANIFEST.patterns.filter((p) => p.phase === currentPhase);
+    listEl.innerHTML = patterns.map((p) => `
+      <li data-id="${p.id}" class="${p.id === currentId ? 'active' : ''}">
+        <span class="id">${p.id}</span>
+        <span class="title">${escapeHtml(p.title)}</span>
+        <span class="status ${p.status}">${p.status}${p.stateful ? ' · stateful' : ''}</span>
+      </li>
+    `).join('');
+    listEl.querySelectorAll('li').forEach((li) => {
+      li.addEventListener('click', () => {
+        currentId = li.dataset.id;
+        renderList();
+        renderDetail();
+      });
+    });
+  }
+
+  function renderDetail() {
+    const p = MANIFEST.patterns.find((x) => x.id === currentId);
+    if (!p) {
+      detailEl.innerHTML = '<p class="empty">Select a pattern on the left.</p>';
+      return;
+    }
+    const requiresPatch = p.compiler.requiresPatchedSilverc;
+    const bootstrapNote = requiresPatch
+      ? `<div class="notice"><strong>Phase-5 compile gate.</strong> Before compiling this pattern, run <code>${p.compiler.bootstrapCommand}</code> to apply the OpenSilver ZK patch.</div>`
+      : '';
+    const sampleDeploy = p.contractPath
+      ? `opensilver deploy-plan ${p.id} --ctor '[/* see contract source */]' --network kaspa:testnet-12`
+      : null;
+    const sampleInspect = `opensilver get ${p.id} --json`;
+    detailEl.innerHTML = `
+      <h2>${escapeHtml(p.title)}</h2>
+      <div class="badges">
+        ${statusBadge(p.status)}
+        <span class="badge">${p.phase}</span>
+        <span class="badge">${p.stateful ? 'stateful' : 'stateless'}</span>
+        ${verifBadges(p.verification)}
+        ${requiresPatch ? '<span class="badge audit-no">requires patched silverc</span>' : ''}
+      </div>
+      <p class="summary">${escapeHtml(p.summary)}</p>
+      ${bootstrapNote}
+      <h3>Sources</h3>
+      <dl>
+        ${p.contractPath ? `<dt>Contract</dt><dd><code>${p.contractPath}</code></dd>` : ''}
+        ${p.docPath ? `<dt>Docs</dt><dd><code>${p.docPath}</code></dd>` : ''}
+        <dt>Compiler</dt><dd>mode=<code>${p.compiler.defaultMode}</code>, bootstrap=<code>${p.compiler.bootstrapCommand}</code></dd>
+        <dt>Audit</dt><dd>${p.verification.auditStatus}</dd>
+        ${p.verification.runtimeTestPath ? `<dt>Runtime test</dt><dd><code>${p.verification.runtimeTestPath}</code></dd>` : ''}
+        ${p.verification.compileTestPath ? `<dt>Compile test</dt><dd><code>${p.verification.compileTestPath}</code></dd>` : ''}
+      </dl>
+      <h3>Try it from the CLI</h3>
+      <pre>${escapeHtml(sampleInspect)}</pre>
+      ${sampleDeploy ? `<pre>${escapeHtml(sampleDeploy)}</pre>` : ''}
+      <p style="color:var(--muted);font-size:12px">The deploy-plan command compiles the contract and emits a JSON artifact carrying scriptHex, P2SH commitment, entrypoints, and network hints. Render that in your wallet UI to surface the deploy intent to end users.</p>
+      <h3>Tags</h3>
+      <p>${(p.tags || []).map((t) => `<span class="badge">${escapeHtml(t)}</span>`).join(' ') || '<span class="empty" style="padding:0">(none)</span>'}</p>
+    `;
+  }
+
+  function init() {
+    metaEl.textContent = `${MANIFEST.summary.totalPatterns} patterns · ${MANIFEST.summary.runtimeValidated} runtime-validated · ${MANIFEST.summary.auditChecked} audit-checked`;
+    compilerEl.textContent = `${MANIFEST.compilerPolicy.strategy} (ZK lane: ${MANIFEST.compilerPolicy.zkLane})`;
+    filterBar.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        currentPhase = btn.dataset.phase;
+        filterBar.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+        renderList();
+      });
+    });
+    renderList();
+  }
+  init();
+</script>
+</body>
+</html>

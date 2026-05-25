@@ -40,6 +40,7 @@ Phase 0/1 reconnaissance is largely complete and documented. Outreach to Michael
 | `AUDIT_CHECKLIST.md` | Phase 10 Task 10.1 internal audit posture per pattern. Companion to `tests/audit/audit-all-patterns.test.ts`. |
 | `contracts/` | SilverScript contract source tree scaffold for core, token, and later zk-aware patterns. |
 | `sdk/`, `cli/`, `mcp/`, `wizard/`, `integrations/` | Phase 2 TypeScript workspace scaffold for shared manifest/types, tooling, and integration surfaces. |
+| `wizard/src/{template.html,build.mjs}` → `wizard/build/index.html` | Phase 8.3 Web Wizard. A single self-contained static HTML page (vanilla HTML+CSS+JS, no external deps) that renders the IDE manifest: filter by phase, inspect verification + compiler posture per pattern, and copy ready-to-run `opensilver get` / `opensilver deploy-plan` commands. Build with `npm run wizard:build`. CI drift gate: `npm run wizard:check`. Regression test: `tests/wizard.test.ts`. |
 | `docs/site/` | Docusaurus docs-site scaffold. |
 | `tests/` | Vitest-based compile suite, one test per Phase-3 pattern plus the shared manifest. |
 | `runtime-tests/` | Rust crate that compiles each `.sil` via `silverscript-lang` and executes the redeem script in `kaspa-txscript`'s VM. Run via `npm run test:runtime` or `cargo test --manifest-path runtime-tests/Cargo.toml`. |
@@ -93,6 +94,21 @@ Tracked outputs:
 - `artifacts/manifests/ide-all.json`
 - `artifacts/manifests/wallet-krc20.json`
 - CI drift gate: `npm run manifests:check`
+
+### Web Wizard
+
+The Phase 8.3 web wizard renders the IDE manifest as a single self-contained
+HTML page. Build it:
+
+```bash
+npm run wizard:build
+```
+
+That writes `wizard/build/index.html` — open directly in a browser via
+`file://` or serve from any static host. It carries no external
+dependencies and inlines the canonical IDE manifest so the page reflects
+the same verification + compiler posture surfaced by the SDK and MCP
+tools. CI enforces drift with `npm run wizard:check`.
 
 ## Toolchain
 

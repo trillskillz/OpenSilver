@@ -1,6 +1,9 @@
 node_modules/
 dist/
 build/
+# Wizard build artifact is checked in (CI drift gate via `npm run wizard:check`).
+!wizard/build/
+!wizard/build/index.html
 coverage/
 .docusaurus/
 .cache/

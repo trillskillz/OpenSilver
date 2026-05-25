@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OpenSilver Wizard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0c0d10;
+    --fg: #e8e9eb;
+    --muted: #8a8d92;
+    --accent: #6cc7c5;
+    --warn: #e8b15a;
+    --error: #e88a8a;
+    --panel: #14161a;
+    --border: #23262c;
+    --code-bg: #181a1f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 16px; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header .subtitle { color: var(--muted); font-size: 13px; }
+  header .meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+  main { display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 57px); }
+  aside { border-right: 1px solid var(--border); overflow-y: auto; }
+  aside .filter { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; }
+  aside .filter button {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  aside .filter button.active { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  aside ul { list-style: none; padding: 0; margin: 0; }
+  aside li {
+    padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  aside li:hover { background: var(--panel); }
+  aside li.active { background: var(--panel); border-left: 3px solid var(--accent); padding-left: 13px; }
+  aside li .id { font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; }
+  aside li .title { font-weight: 600; }
+  aside li .status { font-size: 11px; color: var(--muted); }
+  aside li .status.scaffolded { color: var(--accent); }
+  aside li .status.planned { color: var(--warn); }
+  section.detail { padding: 24px 32px; overflow-y: auto; }
+  section.detail h2 { margin: 0 0 8px; font-size: 22px; }
+  section.detail .badges { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: ui-monospace, monospace;
+    background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+  }
+  .badge.compile-ok, .badge.runtime-ok, .badge.audit-ok { color: var(--accent); border-color: var(--accent); }
+  .badge.compile-no, .badge.runtime-no, .badge.audit-no { color: var(--warn); border-color: var(--warn); }
+  section.detail .summary { margin: 0 0 24px; color: var(--fg); }
+  section.detail h3 { margin: 24px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  section.detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; font-size: 13px; }
+  section.detail dt { color: var(--muted); }
+  section.detail code { background: var(--code-bg); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+  section.detail pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+  section.detail .notice { background: var(--panel); border-left: 3px solid var(--warn); padding: 10px 14px; margin: 16px 0; font-size: 13px; }
+  section.detail .notice.error { border-left-color: var(--error); }
+  section.detail .empty { color: var(--muted); padding: 80px 0; text-align: center; font-style: italic; }
+  section.detail .links a { color: var(--accent); text-decoration: none; margin-right: 16px; font-size: 13px; }
+  section.detail .links a:hover { text-decoration: underline; }
+  footer { padding: 12px 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+  footer .compiler { font-family: ui-monospace, monospace; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenSilver Wizard</h1>
+  <span class="subtitle">Browse, inspect, and copy deploy commands for OpenSilver covenant patterns.</span>
+  <span class="meta" id="meta"></span>
+</header>
+<main>
+  <aside>
+    <div class="filter" id="filter">
+      <button data-phase="all" class="active">all</button>
+      <button data-phase="core">core</button>
+      <button data-phase="krc20">krc20</button>
+      <button data-phase="zk-aware">zk-aware</button>
+    </div>
+    <ul id="pattern-list"></ul>
+  </aside>
+  <section class="detail" id="detail">
+    <p class="empty">Select a pattern on the left.</p>
+  </section>
+</main>
+<footer>
+  <span>Compiler strategy: <span class="compiler" id="compiler"></span></span>
+  <span style="margin-left:24px">Need to deploy? See <a href="../docs/DEPLOY_GUIDE.md">docs/DEPLOY_GUIDE.md</a></span>
+</footer>
+<script>
+  const MANIFEST = {
+  "consumer": "ide",
+  "patterns": [
+    {
+      "id": "core.ownable",
+      "title": "Ownable",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Single-owner covenant with explicit transfer semantics and KIP-20-safe state rotation.",
+      "contractPath": "contracts/core/ownable.sil",
+      "docPath": "docs/patterns/core/ownable.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/ownable-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.multisig",
+      "title": "MultiSig",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Configurable threshold policy over three explicit signers with a stateful reconfiguration path.",
+      "contractPath": "contracts/core/multisig.sil",
+      "docPath": "docs/patterns/core/multisig.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/multisig-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.timelock",
+      "title": "TimeLock",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Time-locked release scaffold with hard/soft cancel modes and a forward-only lock extension path.",
+      "contractPath": "contracts/core/timelock.sil",
+      "docPath": "docs/patterns/core/timelock.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/timelock-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.vault",
+      "title": "Vault",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Enterprise-treasury scaffold combining owner rotation, signer quorum, and timelocked release.",
+      "contractPath": "contracts/core/vault.sil",
+      "docPath": "docs/patterns/core/vault.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/vault-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.escrow-bilateral",
+      "title": "Escrow (bilateral)",
+      "phase": "core",
+      "stateful": false,
+      "status": "scaffolded",
+      "summary": "Three-party bilateral escrow scaffold with arbiter-approved release/refund and buyer timeout reclaim.",
+      "contractPath": "contracts/core/escrow-bilateral.sil",
+      "docPath": "docs/patterns/core/escrow-bilateral.md",
+      "tags": [
+        "core",
+        "stateless"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/escrow-bilateral-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.escrow-milestone",
+      "title": "Escrow (milestone)",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Stateful milestone escrow scaffold with monotonic progress, final release, dispute refund, and timeout reclaim.",
+      "contractPath": "contracts/core/escrow-milestone.sil",
+      "docPath": "docs/patterns/core/escrow-milestone.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/escrow-milestone-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.streaming-payment",
+      "title": "Streaming Payment",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Recurring-payment scaffold with recipient withdrawals, remaining allowance tracking, and sender cancellation.",
+      "contractPath": "contracts/core/streaming-payment.sil",
+      "docPath": "docs/patterns/core/streaming-payment.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/streaming-payment-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.vesting",
+      "title": "Vesting",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Discrete-step vesting scaffold with cliff gating, claimed-amount tracking, and optional admin revocation.",
+      "contractPath": "contracts/core/vesting.sil",
+      "docPath": "docs/patterns/core/vesting.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/vesting-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.dead-mans-switch",
+      "title": "Dead Man's Switch",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Inheritance/recovery scaffold with owner keepalive, fallback claim, and beneficiary rotation.",
+      "contractPath": "contracts/core/dead-man-switch.sil",
+      "docPath": "docs/patterns/core/dead-man-switch.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/dead-mans-switch-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.social-recovery",
+      "title": "Social Recovery",
+      "phase": "core",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Guardian-quorum recovery scaffold with delayed activation and owner cancellation.",
+      "contractPath": "contracts/core/social-recovery.sil",
+      "docPath": "docs/patterns/core/social-recovery.md",
+      "tags": [
+        "core",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/social-recovery-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.atomic-swap-htlc",
+      "title": "Atomic Swap (HTLC)",
+      "phase": "core",
+      "stateful": false,
+      "status": "scaffolded",
+      "summary": "Hash time-locked contract scaffold with recipient claim and timeout refund paths.",
+      "contractPath": "contracts/core/atomic-swap-htlc.sil",
+      "docPath": "docs/patterns/core/atomic-swap-htlc.md",
+      "tags": [
+        "core",
+        "stateless"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/atomic-swap-htlc-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "core.freelance-payroll",
+      "title": "Freelance / Payroll",
+      "phase": "core",
+      "stateful": false,
+      "status": "scaffolded",
+      "summary": "Client/worker/arbiter payment scaffold with mutual release, arbiter dispute paths, and timeout reclaim.",
+      "contractPath": "contracts/core/freelance-payroll.sil",
+      "docPath": "docs/patterns/core/freelance-payroll.md",
+      "tags": [
+        "core",
+        "stateless"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/freelance-payroll-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/core_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-reference",
+      "title": "KCC20 reference",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Stable KCC20 asset contract with three ownership modes and non-minter supply-conservation invariants.",
+      "contractPath": "contracts/tokens/kcc20.sil",
+      "docPath": "docs/patterns/tokens/kcc20.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": false,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-compile.test.ts"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-ownable",
+      "title": "KCC20Ownable",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Controller covenant that rotates KCC20 mint authority through an Ownable-style two-step admin handoff.",
+      "contractPath": "contracts/tokens/kcc20-ownable.sil",
+      "docPath": "docs/patterns/tokens/kcc20-ownable.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-ownable-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/kcc20_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-pausable",
+      "title": "KCC20Pausable",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Controller covenant that halts new KCC20 issuance while paused without freezing existing holder transfers.",
+      "contractPath": "contracts/tokens/kcc20-pausable.sil",
+      "docPath": "docs/patterns/tokens/kcc20-pausable.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-pausable-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/kcc20_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-capped",
+      "title": "KCC20Capped",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Controller covenant that caps KCC20 issuance through a decremented remaining-allowance state budget.",
+      "contractPath": "contracts/tokens/kcc20-capped.sil",
+      "docPath": "docs/patterns/tokens/kcc20-capped.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-capped-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/kcc20_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "krc20.kcc20-vesting",
+      "title": "KCC20Vesting",
+      "phase": "krc20",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Controller covenant that releases KCC20 issuance on a beneficiary-signed vesting schedule.",
+      "contractPath": "contracts/tokens/kcc20-vesting.sil",
+      "docPath": "docs/patterns/tokens/kcc20-vesting.md",
+      "tags": [
+        "krc20",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/tokens/kcc20-vesting-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/kcc20_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run bootstrap:silverc",
+        "defaultMode": "ast-only",
+        "requiresPatchedSilverc": false
+      }
+    },
+    {
+      "id": "zk-aware.verified-computation",
+      "title": "Verified Computation",
+      "phase": "zk-aware",
+      "stateful": false,
+      "status": "scaffolded",
+      "summary": "Covenant releasing funds on a valid Groth16 proof + prover signature. Compiles via the OpenSilver Phase-5 patch lane (npm run patch:silverc:zk); runtime-verified with a real Groth16 fixture.",
+      "contractPath": "contracts/zk/verified-computation.sil",
+      "docPath": "docs/patterns/zk/verified-computation.md",
+      "tags": [
+        "zk-aware",
+        "stateless"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/zk/verified-computation-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/zk_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run patch:silverc:zk",
+        "defaultMode": "compile",
+        "requiresPatchedSilverc": true
+      }
+    },
+    {
+      "id": "zk-aware.private-asset-transfer",
+      "title": "Private Asset Transfer",
+      "phase": "zk-aware",
+      "stateful": true,
+      "status": "scaffolded",
+      "summary": "Commitment-root + recipient-pinned Groth16 covenant for confidential transfers. v1 is covenant-side only; nullifier-accumulator/stateful follow-up remains open.",
+      "contractPath": "contracts/zk/private-asset-transfer.sil",
+      "docPath": "docs/patterns/zk/private-asset-transfer.md",
+      "tags": [
+        "zk-aware",
+        "stateful"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/zk/private-asset-transfer-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/zk_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run patch:silverc:zk",
+        "defaultMode": "compile",
+        "requiresPatchedSilverc": true
+      }
+    },
+    {
+      "id": "zk-aware.zk-verified-oracle",
+      "title": "ZK-Verified Oracle",
+      "phase": "zk-aware",
+      "stateful": false,
+      "status": "scaffolded",
+      "summary": "M-of-N committee + Groth16 proof of correct computation. Compiles via the OpenSilver Phase-5 patch lane; runtime-verified with a real Groth16 fixture. v1 emits a terminal payout; the cross-contract output-binding wrapper is a follow-up.",
+      "contractPath": "contracts/zk/zk-verified-oracle.sil",
+      "docPath": "docs/patterns/zk/zk-verified-oracle.md",
+      "tags": [
+        "zk-aware",
+        "stateless"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/zk/zk-verified-oracle-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/zk_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run patch:silverc:zk",
+        "defaultMode": "compile",
+        "requiresPatchedSilverc": true
+      }
+    },
+    {
+      "id": "zk-aware.proof-stitched-multi-pattern",
+      "title": "Proof-Stitched Multi-Pattern",
+      "phase": "zk-aware",
+      "stateful": false,
+      "status": "scaffolded",
+      "summary": "Leader/delegate split: one Groth16 verification shared across N covenant inputs via KIP-20 covenant context. v1 single-recipient (per-recipient public-input decoding is a follow-up).",
+      "contractPath": "contracts/zk/proof-stitched-multi-pattern.sil",
+      "docPath": "docs/patterns/zk/proof-stitched-multi-pattern.md",
+      "tags": [
+        "zk-aware",
+        "stateless"
+      ],
+      "verification": {
+        "compileValidated": true,
+        "runtimeValidated": true,
+        "auditChecked": true,
+        "auditStatus": "internal-regression-gated",
+        "compileTestPath": "tests/zk/proof-stitched-multi-pattern-compile.test.ts",
+        "runtimeTestPath": "runtime-tests/tests/zk_runtime.rs"
+      },
+      "compiler": {
+        "bootstrap": "pinned-upstream",
+        "bootstrapCommand": "npm run patch:silverc:zk",
+        "defaultMode": "compile",
+        "requiresPatchedSilverc": true
+      }
+    }
+  ],
+  "compilerPolicy": {
+    "strategy": "pinned-upstream-bootstrap",
+    "zkLane": "patched-overlay",
+    "defaultBootstrapCommand": "npm run bootstrap:silverc",
+    "zkBootstrapCommand": "npm run patch:silverc:zk"
+  },
+  "summary": {
+    "totalPatterns": 21,
+    "requiresPatchedSilverc": 4,
+    "runtimeValidated": 20,
+    "auditChecked": 21
+  }
+};
+  const filterBar = document.getElementById('filter');
+  const listEl = document.getElementById('pattern-list');
+  const detailEl = document.getElementById('detail');
+  const metaEl = document.getElementById('meta');
+  const compilerEl = document.getElementById('compiler');
+  let currentPhase = 'all';
+  let currentId = null;
+
+  function statusBadge(status) {
+    const ok = status === 'scaffolded' || status === 'implemented' || status === 'audited';
+    return `<span class="badge ${ok ? 'compile-ok' : ''}">${status}</span>`;
+  }
+
+  function verifBadges(v) {
+    return [
+      `<span class="badge ${v.compileValidated ? 'compile-ok' : 'compile-no'}">compile ${v.compileValidated ? '✓' : '–'}</span>`,
+      `<span class="badge ${v.runtimeValidated ? 'runtime-ok' : 'runtime-no'}">runtime ${v.runtimeValidated ? '✓' : '–'}</span>`,
+      `<span class="badge ${v.auditChecked ? 'audit-ok' : 'audit-no'}">audit ${v.auditChecked ? '✓' : '–'}</span>`,
+    ].join('');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
+  function renderList() {
+    const patterns = currentPhase === 'all'
+      ? MANIFEST.patterns
+      : MANIFEST.patterns.filter((p) => p.phase === currentPhase);
+    listEl.innerHTML = patterns.map((p) => `
+      <li data-id="${p.id}" class="${p.id === currentId ? 'active' : ''}">
+        <span class="id">${p.id}</span>
+        <span class="title">${escapeHtml(p.title)}</span>
+        <span class="status ${p.status}">${p.status}${p.stateful ? ' · stateful' : ''}</span>
+      </li>
+    `).join('');
+    listEl.querySelectorAll('li').forEach((li) => {
+      li.addEventListener('click', () => {
+        currentId = li.dataset.id;
+        renderList();
+        renderDetail();
+      });
+    });
+  }
+
+  function renderDetail() {
+    const p = MANIFEST.patterns.find((x) => x.id === currentId);
+    if (!p) {
+      detailEl.innerHTML = '<p class="empty">Select a pattern on the left.</p>';
+      return;
+    }
+    const requiresPatch = p.compiler.requiresPatchedSilverc;
+    const bootstrapNote = requiresPatch
+      ? `<div class="notice"><strong>Phase-5 compile gate.</strong> Before compiling this pattern, run <code>${p.compiler.bootstrapCommand}</code> to apply the OpenSilver ZK patch.</div>`
+      : '';
+    const sampleDeploy = p.contractPath
+      ? `opensilver deploy-plan ${p.id} --ctor '[/* see contract source */]' --network kaspa:testnet-12`
+      : null;
+    const sampleInspect = `opensilver get ${p.id} --json`;
+    detailEl.innerHTML = `
+      <h2>${escapeHtml(p.title)}</h2>
+      <div class="badges">
+        ${statusBadge(p.status)}
+        <span class="badge">${p.phase}</span>
+        <span class="badge">${p.stateful ? 'stateful' : 'stateless'}</span>
+        ${verifBadges(p.verification)}
+        ${requiresPatch ? '<span class="badge audit-no">requires patched silverc</span>' : ''}
+      </div>
+      <p class="summary">${escapeHtml(p.summary)}</p>
+      ${bootstrapNote}
+      <h3>Sources</h3>
+      <dl>
+        ${p.contractPath ? `<dt>Contract</dt><dd><code>${p.contractPath}</code></dd>` : ''}
+        ${p.docPath ? `<dt>Docs</dt><dd><code>${p.docPath}</code></dd>` : ''}
+        <dt>Compiler</dt><dd>mode=<code>${p.compiler.defaultMode}</code>, bootstrap=<code>${p.compiler.bootstrapCommand}</code></dd>
+        <dt>Audit</dt><dd>${p.verification.auditStatus}</dd>
+        ${p.verification.runtimeTestPath ? `<dt>Runtime test</dt><dd><code>${p.verification.runtimeTestPath}</code></dd>` : ''}
+        ${p.verification.compileTestPath ? `<dt>Compile test</dt><dd><code>${p.verification.compileTestPath}</code></dd>` : ''}
+      </dl>
+      <h3>Try it from the CLI</h3>
+      <pre>${escapeHtml(sampleInspect)}</pre>
+      ${sampleDeploy ? `<pre>${escapeHtml(sampleDeploy)}</pre>` : ''}
+      <p style="color:var(--muted);font-size:12px">The deploy-plan command compiles the contract and emits a JSON artifact carrying scriptHex, P2SH commitment, entrypoints, and network hints. Render that in your wallet UI to surface the deploy intent to end users.</p>
+      <h3>Tags</h3>
+      <p>${(p.tags || []).map((t) => `<span class="badge">${escapeHtml(t)}</span>`).join(' ') || '<span class="empty" style="padding:0">(none)</span>'}</p>
+    `;
+  }
+
+  function init() {
+    metaEl.textContent = `${MANIFEST.summary.totalPatterns} patterns · ${MANIFEST.summary.runtimeValidated} runtime-validated · ${MANIFEST.summary.auditChecked} audit-checked`;
+    compilerEl.textContent = `${MANIFEST.compilerPolicy.strategy} (ZK lane: ${MANIFEST.compilerPolicy.zkLane})`;
+    filterBar.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        currentPhase = btn.dataset.phase;
+        filterBar.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+        renderList();
+      });
+    });
+    renderList();
+  }
+  init();
+</script>
+</body>
+</html>
